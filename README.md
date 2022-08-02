@@ -11,11 +11,12 @@ assumptions about parts of the language.
 Download the latest build from [actions](https://github.com/Lauriethefish/ocr-erl/actions), and extract the ZIP file.
 You can run code by passing the path to a file as a command line argument:
 ```sh
-./erl_cli code.erl
+./erl code.erl
 ```
 
 __Additional arguments:__
 `--emit-bytecode`: prints the bytecode generated from the AST before running the program.
+
 `--time`: displays the time (in seconds) that the program took to execute.
 
 ## Why
