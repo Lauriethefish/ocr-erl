@@ -1,0 +1,23 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target: ["aarch64-unknown-linux-musl", "aarch64-pc-windows-msvc"]
+
+    runs-on: ubuntu-latest
+    name: Run Tests
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
