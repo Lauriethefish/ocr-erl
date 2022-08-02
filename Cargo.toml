@@ -1,7 +1,10 @@
 [workspace]
-
 members = [
     "parser",
     "cli",
     "bytecode_exec"
 ]
+
+
+[profile.release]
+lto = true
