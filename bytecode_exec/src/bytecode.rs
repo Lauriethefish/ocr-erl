@@ -42,6 +42,15 @@ pub struct Module {
     pub(crate) sub_programs: Vec<SubProgram>,
 }
 
+impl Module {
+    pub(crate) fn main_idx(&self) -> usize {
+        if self.sub_programs.is_empty() {
+            panic!("Main sub-program missing! There must always be a main procedure");
+        }
+        self.sub_programs.len() - 1
+    }
+}
+
 impl Debug for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Module")
@@ -66,6 +75,10 @@ pub(crate) struct SubProgram {
     /// If true, the sub-program's execution *must* finish with a `ReturnValue` instruction.
     /// If false, the sub-program's execution *must not* finish with a `ReturnValue` instruction.
     pub(crate) is_function: bool,
+
+    /// The name of the sub-program, for error reporting purposes.
+    /// `None` if this is the main procedure.
+    pub(crate) name: Option<String>,
 }
 
 impl Debug for SubProgram {
@@ -129,7 +142,7 @@ pub(crate) enum Instruction {
     JumpIfFalsePopIfTrue(usize),
     /// If the value at the top of the stack is `true`, jumps to the given index.
     /// If the value at the top of the stack is `false`, it is popped from the stack.
-    /// This instruction is particularly useful for efficiently implementing conditional AND.
+    /// This instruction is particularly useful for efficiently implementing conditional OR.
     JumpIfTruePopIfFalse(usize),
 
     /// Jumps to the given instruction index.

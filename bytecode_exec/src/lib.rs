@@ -20,5 +20,5 @@ pub mod stdlib;
 /// Compiles the given AST into an ERL module and executes it.
 pub fn compile_and_execute(ast: Vec<RootStatement>) -> Result<(), RuntimeError> {
     let module = compiler::compile(ast);
-    executor::execute(&module)
+    executor::execute_main(&module)
 }

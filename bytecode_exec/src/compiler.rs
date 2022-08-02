@@ -74,7 +74,8 @@ mod tests {
                 local_count: 2,
                 arg_count: 1,
                 instructions: vec![Instruction::Nop],
-                is_function: true
+                is_function: true,
+                name: None
             },
             ctx.finish()
         )
@@ -417,6 +418,7 @@ impl<'a> Context<'a> {
             arg_count: self.arg_count,
             instructions: self.instructions,
             is_function: self.is_function,
+            name: None, // Set later in `compile_module`
         }
     }
 
@@ -901,7 +903,8 @@ pub fn compile(program: Vec<RootStatement>) -> Module {
                     .global_function_context
                     .take()
                     .expect("Global context must exist as it was passed in above");
-                let sub_program = ctx.finish();
+                let mut sub_program = ctx.finish();
+                sub_program.name = Some(name.clone());
 
                 let idx = sub_programs.len();
                 let call_info = SubProgramCallInfo {

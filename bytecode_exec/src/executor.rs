@@ -291,25 +291,67 @@ impl<const SIZE: usize> GenericStack<SIZE> {
     }
 }
 
-/// Executes the main function within the given module.
-pub fn execute(module: &Module) -> Result<(), RuntimeError> {
+/// Executes the main sub-program within the given module
+pub fn execute_main(module: &Module) -> Result<(), RuntimeError> {
+    execute_idx(module, module.main_idx(), &[])?;
+
+    Ok(())
+}
+
+/// Executes the sub program with the given name within the given module.
+pub fn execute_by_name(
+    module: &Module,
+    name: &str,
+    args: &[Value],
+) -> Result<Option<Value>, RuntimeError> {
+    for (idx, sub_program) in module.sub_programs.iter().enumerate() {
+        if sub_program.name.as_deref() != Some(name) {
+            continue;
+        }
+
+        // Check that the caller passed the right number of arguments
+        if args.len() != sub_program.arg_count {
+            return Err(RuntimeError::WrongNumberOfArguments {
+                name: name.to_owned(),
+                expected: sub_program.arg_count,
+                actual: args.len(),
+            });
+        }
+
+        return execute_idx(module, idx, args);
+    }
+
+    Err(RuntimeError::NoSuchSubProgram(name.to_owned()))
+}
+
+/// Executes the sub program with the given index within the given module.
+fn execute_idx(
+    module: &Module,
+    sub_program_idx: usize,
+    args: &[Value],
+) -> Result<Option<Value>, RuntimeError> {
     // Create the stack which holds values being used by functions
     let mut stack = Stack::new();
     // Create the call stack
     let mut call_stack = Vec::new();
 
-    // Start at the beginning of the main procedure.
-    let main_proc_index = module.sub_programs.len() - 1;
-    // The compiler makes sure that there is always a main procedure.
-    let main_proc = module
-        .sub_programs
-        .get(main_proc_index)
-        .expect("No main procedure");
+    // Move the stack pointer to after the locals of the main procedure (to make global variables available to other sub-programs
+    // and to make local variables available to main)
+    let main_proc = &module.sub_programs[module.main_idx()];
+    stack.move_to_function_call(main_proc.local_count, 0);
 
-    let mut state = InstructionState::at_beginning_of(main_proc);
-    // Move the stack pointer to after the locals of the main procedure
-    stack.move_to_function_call(state.sub_program.local_count, 0);
+    // Prepare the stack for the sub-program we're starting execution at, if it isn't main
+    let entry_sub_program = &module.sub_programs[sub_program_idx];
+    if entry_sub_program != main_proc {
+        // Simulate a function call to the sub-program
+        for arg in args {
+            stack.push(arg.clone());
+        }
+        stack.move_to_function_call(entry_sub_program.local_count, entry_sub_program.arg_count);
+    }
 
+    // Start execution at the beginning of the given sub-program
+    let mut state = InstructionState::at_beginning_of(entry_sub_program);
     loop {
         let instruction = match state
             .sub_program
@@ -651,7 +693,7 @@ pub fn execute(module: &Module) -> Result<(), RuntimeError> {
 
                 let caller_state = match call_stack.pop() {
                     Some(state) => state,
-                    None => return Ok(()),
+                    None => return Ok(None),
                 };
 
                 stack.move_to_caller(caller_state.stack);
@@ -664,10 +706,7 @@ pub fn execute(module: &Module) -> Result<(), RuntimeError> {
 
                 let caller_state = match call_stack.pop() {
                     Some(state) => state,
-                    // This will never be reached, because the main sub-program is a procedure, so the
-                    // bytecode compiler prevents returning a value from it.
-                    // However, if it did not, this would be the correct error, so we will return it.
-                    None => return Err(RuntimeError::CannotReturnValueFromProcedure),
+                    None => return Ok(Some(stack.pop())),
                 };
 
                 stack.return_to_caller(caller_state.stack);

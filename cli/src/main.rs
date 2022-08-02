@@ -46,7 +46,7 @@ fn main() {
     }
 
     let before = Instant::now();
-    match erl_bytecode_exec::executor::execute(&module) {
+    match erl_bytecode_exec::executor::execute_main(&module) {
         Ok(_) => {}
         Err(err) => display_err(err),
     };
