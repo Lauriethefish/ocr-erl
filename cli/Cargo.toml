@@ -1,0 +1,9 @@
+[package]
+name = "erl_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+erl_parser = { path = "../parser" }
+erl_bytecode_exec = { path = "../bytecode_exec" }
+colored = "2"

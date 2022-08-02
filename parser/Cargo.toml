@@ -1,0 +1,9 @@
+[package]
+name = "erl_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+phf = { version = "0.11.0", features = ["macros"] }
+colored = "2"
+lazy_static = { version = "1.4" }
