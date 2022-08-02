@@ -29,8 +29,27 @@ However, in my experience, writing python in the exams is really annoying, due t
 Using another high-level language such as C# or Java is possible, but these are very verbose and there often isn't enough room. It also brings a higher chance that the examiner might not fully understand your code.
 Therefore, learning ERL can be useful. Using this interpreter, anybody can write and run ERL code, making it much easier to learn.
 
-## What Works
-Under construction.
+## TODO List (pulled from spec)
+- [x] All operators.
+- [x] Comments.
+- [x] Assignment.
+- [x] Basic IO (`input()`/`print()`).
+- [x] Casting.
+- [x] `for` loops.
+- [x] `while` loops.
+- [ ] `do until` loops
+- [x] `if then elseif` statements.
+- [ ] `switch` statements.
+- [ ] String length.
+- [ ] Substrings
+- [x] Concatenation
+- [ ] ASCII conversion
+- [ ] File IO
+- [ ] Arrays
+- [x] Procedures
+- [x] Functions
+- [ ] Random numbers
+
 
 ## Project Structure
 This interpreter is made up of three main crates:
