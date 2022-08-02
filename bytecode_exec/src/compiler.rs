@@ -902,7 +902,7 @@ pub fn compile(program: Vec<RootStatement>) -> Module {
                     .expect("Global context must exist as it was passed in above");
                 let sub_program = ctx.finish();
 
-                let idx = sub_programs.len() + 1;
+                let idx = sub_programs.len();
                 let call_info = SubProgramCallInfo {
                     r#type: SubProgramType::Bytecode(idx),
                     arg_count: sub_program.arg_count,
@@ -920,7 +920,7 @@ pub fn compile(program: Vec<RootStatement>) -> Module {
             }
         }
     }
-    sub_programs.insert(0, global_ctx.finish());
+    sub_programs.push(global_ctx.finish());
 
     Module { sub_programs }
 }
