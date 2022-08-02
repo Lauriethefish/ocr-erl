@@ -3,7 +3,7 @@ use std::{fmt::Display, path::PathBuf, time::Instant};
 use colored::Colorize;
 
 fn display_err(text: impl Display) {
-    eprint!("{} {}", "error:".red().bold(), text)
+    eprintln!("{} {}", "error:".red().bold(), text)
 }
 
 fn main() {
