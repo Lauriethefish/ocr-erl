@@ -6,10 +6,6 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        target: ["aarch64-unknown-linux-musl", "aarch64-pc-windows-msvc"]
-
     runs-on: ubuntu-latest
     name: Run Tests
 

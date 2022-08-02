@@ -7,3 +7,7 @@ edition = "2021"
 erl_parser = { path = "../parser" }
 erl_bytecode_exec = { path = "../bytecode_exec" }
 colored = "2"
+
+[[bin]]
+name = "erl"
+path = "src/main.rs"

@@ -5,25 +5,42 @@ on:
   pull_request:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        target: ["aarch64-unknown-linux-musl", "aarch64-pc-windows-msvc"]
-
+  build-windows:
     runs-on: windows-latest
-    name: Build for ${{ matrix.target }}
+    name: Build Windows
 
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
       - uses: actions-rs/cargo@v1
         with:
-          use-cross: true
           command: build
-          args: --target ${{ matrix.target }}
+          args: --release
+      - name: Artifact Upload
+        if: ${{ github.event_name != 'release' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: "windows"
+          path: ./target/release/erl.exe
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    name: Build Ubuntu
 
-          name: Build
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Artifact Upload
+        if: ${{ github.event_name != 'release' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: "ubuntu"
+          path: ./target/release/erl
+
