@@ -643,9 +643,9 @@ mod tests {
             tokens.push(Token::EndOfLine);
             assert_eq!(
                 Statement::Assign {
-                    is_const: is_const,
-                    is_global: is_global,
-                    is_array: is_array,
+                    is_const,
+                    is_global,
+                    is_array,
                     to_assign: Assignable::Variable("test".to_string()),
                     assign_with: AssignmentValue::Expression(Expression::IntegerLiteral(5))
                 },
@@ -1521,7 +1521,7 @@ fn parse_for_loop(lexer: &mut impl Lexer) -> Result<Statement> {
         return Err(SyntaxError::new_single(
             identifier_err_start,
             lexer.at_last_token(),
-            SyntaxErrorKind::ExpectedOneOf(vec![Token::Identifier(variable_name.to_string())]),
+            SyntaxErrorKind::ExpectedOneOf(vec![Token::Identifier(variable_name)]),
         ));
     }
 
@@ -1530,9 +1530,9 @@ fn parse_for_loop(lexer: &mut impl Lexer) -> Result<Statement> {
     Ok(Statement::For {
         start: lower_bound,
         end: upper_bound,
-        step: step,
-        variable_name: variable_name,
-        block: block,
+        step,
+        variable_name,
+        block,
     })
 }
 
@@ -1601,7 +1601,7 @@ pub fn parse_root_block(lexer: &mut impl Lexer) -> Result<Vec<RootStatement>> {
                 continue;
             }
             Token::EndOfFile => {
-                return if errors.len() > 0 {
+                return if !errors.is_empty() {
                     Err(errors)
                 } else {
                     Ok(result)
@@ -1686,18 +1686,18 @@ fn parse_root_statement(lexer: &mut impl Lexer) -> Result<RootStatement> {
 }
 
 fn is_block_separator(token: Token) -> bool {
-    match token {
-        Token::EndIf => true,
-        Token::EndFunction => true,
-        Token::EndProcedure => true,
-        Token::EndWhile => true,
-        Token::Next => true,
-        Token::ElseIf => true,
-        Token::Else => true,
-        Token::EndSwitch => true,
-        Token::EndOfFile => true,
-        _ => false,
-    }
+    matches!(
+        token,
+        Token::EndIf
+            | Token::EndFunction
+            | Token::EndProcedure
+            | Token::EndWhile
+            | Token::Next
+            | Token::ElseIf
+            | Token::Else
+            | Token::EndSwitch
+            | Token::EndOfFile
+    )
 }
 
 fn parse_block(
@@ -1736,10 +1736,10 @@ fn parse_block(
         }
     };
 
-    if errors.len() > 0 {
-        return Err(errors);
+    if !errors.is_empty() {
+        Err(errors)
     } else {
-        return Ok((result, ending_token));
+        Ok((result, ending_token))
     }
 }
 
@@ -1810,22 +1810,17 @@ fn parse_statement(lexer: &mut impl Lexer) -> Result<Statement> {
         Expression::Assignable(value_expr) => {
             if must_be_assignment {
                 if is_array {
-                    match value_expr.clone() {
-                        Assignable::Index { to_index, indices } => {
-                            expect_token(lexer, Token::EndOfLine)?;
-                            if let Expression::Assignable(Assignable::Variable(variable)) =
-                                *to_index
-                            {
-                                return Ok(Statement::Assign {
-                                    is_const,
-                                    is_global,
-                                    is_array,
-                                    to_assign: Assignable::Variable(variable),
-                                    assign_with: AssignmentValue::BlankArray(indices),
-                                });
-                            }
+                    if let Assignable::Index { to_index, indices } = value_expr.clone() {
+                        expect_token(lexer, Token::EndOfLine)?;
+                        if let Expression::Assignable(Assignable::Variable(variable)) = *to_index {
+                            return Ok(Statement::Assign {
+                                is_const,
+                                is_global,
+                                is_array,
+                                to_assign: Assignable::Variable(variable),
+                                assign_with: AssignmentValue::BlankArray(indices),
+                            });
                         }
-                        _ => {}
                     }
                 }
 
@@ -1948,8 +1943,8 @@ fn parse_expression_list(lexer: &mut impl Lexer, ending_token: Token) -> Result<
             return Ok(result);
         }
 
-        if result.len() == 0 || next == Token::Comma {
-            if result.len() != 0 {
+        if result.is_empty() || next == Token::Comma {
+            if !result.is_empty() {
                 lexer.consume_token()?;
             }
             result.push(parse_expression(lexer)?);
@@ -2002,7 +1997,7 @@ fn parse_unary_expression(lexer: &mut impl Lexer) -> Result<Expression> {
             return match parse_unary_operator(lexer) {
                 Ok(operator) => Ok(Expression::Unary {
                     operand: Box::new(parse_unary_expression(lexer)?),
-                    operator: operator,
+                    operator,
                 }),
                 _ => Err(SyntaxError::new_single(
                     beginning_of_expr,
@@ -2054,7 +2049,7 @@ fn parse_unary_expression(lexer: &mut impl Lexer) -> Result<Expression> {
 
                 expr = Expression::Call(Call {
                     callee: Box::new(callee),
-                    args: args,
+                    args,
                 });
             }
             _ => return Ok(expr),
@@ -2078,7 +2073,7 @@ fn parse_expression(lexer: &mut impl Lexer) -> Result<Expression> {
 
                 for (expr, operator) in expressions.into_iter() {
                     first_expr = Expression::Binary {
-                        operator: operator,
+                        operator,
                         left: Box::new(first_expr),
                         right: Box::new(expr),
                     }

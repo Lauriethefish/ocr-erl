@@ -70,9 +70,8 @@ mod tests {
     #[test]
     fn should_not_begin_identifier_without_letter() {
         let mut lexer = lexer!("_invalid_identifier");
-        match lexer.consume_token() {
-            Ok(Token::Identifier(_)) => panic!("Should not have read identifier!"),
-            _ => {}
+        if let Ok(Token::Identifier(_)) = lexer.consume_token() {
+            panic!("Should not have read identifier!")
         }
     }
 
@@ -402,11 +401,11 @@ impl FileLexer {
             None => {}
         }
 
-        return Err(SyntaxError::new(
+        Err(SyntaxError::new(
             before_token.clone(),
             before_token,
             SyntaxErrorKind::UnrecognisedCharacter(first_char),
-        ));
+        ))
     }
 
     /// Reads characters until the next character would be the start of a token.
@@ -467,28 +466,25 @@ impl FileLexer {
         let mut after_decimal_point: f64 = 0.0;
         let mut current_decimal_multiplier = 0.1;
 
-        loop {
+        while let Some(c) = self.peek_char() {
             // Find the next digit within the number literal
-            let digit = match self.peek_char() {
-                Some(c) => match c {
-                    '0' => 0,
-                    '1' => 1,
-                    '2' => 2,
-                    '3' => 3,
-                    '4' => 4,
-                    '5' => 5,
-                    '6' => 6,
-                    '7' => 7,
-                    '8' => 8,
-                    '9' => 9,
-                    '.' => {
-                        is_after_decimal_point = true;
-                        self.read_char();
-                        continue;
-                    }
-                    _ => break,
-                },
-                None => break, // End of file, so end of the literal
+            let digit = match c {
+                '0' => 0,
+                '1' => 1,
+                '2' => 2,
+                '3' => 3,
+                '4' => 4,
+                '5' => 5,
+                '6' => 6,
+                '7' => 7,
+                '8' => 8,
+                '9' => 9,
+                '.' => {
+                    is_after_decimal_point = true;
+                    self.read_char();
+                    continue;
+                }
+                _ => break,
             };
             self.read_char();
 
@@ -512,16 +508,11 @@ impl FileLexer {
         let mut str = String::new();
 
         // Keep parsing characters within the identifier until a special character is reached
-        loop {
-            match self.peek_char() {
-                Some(c) => {
-                    if is_allowed_for_identifier(c) {
-                        str.push(c);
-                    } else {
-                        break;
-                    }
-                }
-                None => break, // EOF also signifies the end of an identifier
+        while let Some(c) = self.peek_char() {
+            if is_allowed_for_identifier(c) {
+                str.push(c);
+            } else {
+                break;
             }
             self.read_char();
         }

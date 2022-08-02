@@ -36,7 +36,7 @@ mod tests {
             FilePosition {
                 row: 0,
                 column: 0,
-                file: file
+                file
             }
         )
     }
@@ -122,7 +122,7 @@ mod tests {
     fn file_position_move_back_should_return_true_if_within_file() {
         let file = File::from_string("line1\n2line".to_string());
 
-        let mut position = FilePosition::new(1, 1, file.clone());
+        let mut position = FilePosition::new(1, 1, file);
         assert!(position.rewind_to_previous_char_if_possible());
         assert_eq!(1, position.row);
         assert_eq!(0, position.column);
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn file_position_move_back_should_return_false_if_out_of_file() {
         let file = File::from_string("line1\n2line".to_string());
-        let mut position = FilePosition::new(0, 0, file.clone());
+        let mut position = FilePosition::new(0, 0, file);
 
         assert!(!position.rewind_to_previous_char_if_possible());
     }
@@ -161,7 +161,7 @@ mod tests {
     fn line_highlight_new_should_panic_if_on_different_lines() {
         let file = File::from_string("line1\n2line".to_string());
         let a = FilePosition::new(1, 1, file.clone());
-        let b = FilePosition::new(2, 3, file.clone());
+        let b = FilePosition::new(2, 3, file);
 
         LineHighlight::new(&a, &b);
     }
@@ -273,8 +273,8 @@ impl File {
     /// If the line is out of bounds of the file, only a newline is written.
     fn fmt_line(&self, f: &mut Formatter, row: usize) -> fmt::Result {
         if let Some(row) = self.inner.contents.get(row) {
-            for i in 0..row.len() {
-                f.write_char(row[i])?;
+            for c in row {
+                f.write_char(*c)?;
             }
 
             Ok(())

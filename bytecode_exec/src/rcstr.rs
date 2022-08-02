@@ -159,7 +159,7 @@ impl RcStr {
             // based on the length of the string, and must be large enough to store the data within the string.
             std::ptr::copy_nonoverlapping(
                 str.as_ptr(),
-                ptr.offset(mem::size_of::<Header>() as isize),
+                ptr.add(mem::size_of::<Header>()),
                 str.len(),
             );
         }
@@ -181,13 +181,13 @@ impl RcStr {
         let ptr = Self::allocate_and_setup_header(left.len() + right.len());
 
         unsafe {
-            let at_left = ptr.offset(mem::size_of::<Header>() as isize);
+            let at_left = ptr.add(mem::size_of::<Header>());
 
             // SAFETY: The size of the layout used to allocate the pointer in `allocate_and_setup_header` is
             // based on the length of both strings, and must be large enough to store the data within both strings.
             std::ptr::copy_nonoverlapping(left.as_ptr(), at_left, left.len());
 
-            let at_right = at_left.offset(left.len() as isize);
+            let at_right = at_left.add(left.len());
             std::ptr::copy_nonoverlapping(right.as_ptr(), at_right, right.len());
         }
 
@@ -271,7 +271,7 @@ impl Deref for RcStr {
             // SAFETY: `new` allocates `self.ptr` with enough size to fit [Header] and the number of bytes within the string,
             // which is assigned to the `len` field within the header. The aligment must be valid, as `u8` has alignment of 1.
             let slice = std::slice::from_raw_parts(
-                self.ptr.offset(mem::size_of::<Header>() as isize),
+                self.ptr.add(mem::size_of::<Header>()),
                 self.header().len,
             );
 

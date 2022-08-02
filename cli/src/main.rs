@@ -8,7 +8,7 @@ fn display_err(text: impl Display) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() < 1 {
+    if args.is_empty() {
         return display_err("wrong number of arguments. Usage: ./erl_cli <file>");
     }
 

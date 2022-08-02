@@ -50,7 +50,7 @@ impl SyntaxError {
     pub(crate) fn new(from: FilePosition, to: FilePosition, kind: SyntaxErrorKind) -> Self {
         Self {
             tag: LineHighlight::new(&from, &to),
-            kind: kind,
+            kind,
         }
     }
 

@@ -44,7 +44,7 @@ mod tests {
         );
         assert!(global_ctx.instructions.is_empty());
         assert_eq!(global_ctx.arg_count, 1);
-        assert_eq!(global_ctx.is_function, false);
+        assert!(!global_ctx.is_function);
     }
 
     #[test]
@@ -59,7 +59,7 @@ mod tests {
         assert!(ctx.locals.is_empty());
         assert!(ctx.instructions.is_empty());
         assert_eq!(ctx.arg_count, 0);
-        assert_eq!(ctx.is_function, true);
+        assert!(ctx.is_function);
     }
 
     #[test]
@@ -396,11 +396,8 @@ impl<'a> Context<'a> {
         let mut result = Self {
             next_local_idx: 0,
             locals: HashMap::new(),
-            arg_count: argument_names
-                .len()
-                .try_into()
-                .expect("Exceeded maximum number of local variables"),
-            global_function_context: global_function_context.map(|ctx| Box::new(ctx)),
+            arg_count: argument_names.len(),
+            global_function_context: global_function_context.map(Box::new),
             available_sub_programs,
             is_function,
             instructions: Vec::new(),
@@ -464,9 +461,7 @@ impl<'a> Context<'a> {
 
     fn emit(&mut self, instruction: Instruction) -> usize {
         self.instructions.push(instruction);
-        (self.instructions.len() - 1)
-            .try_into()
-            .expect("Maximum possible instructions in sub-program exceeded")
+        self.instructions.len() - 1
     }
 
     fn replace(&mut self, idx: usize, with: Instruction) {
@@ -474,10 +469,7 @@ impl<'a> Context<'a> {
     }
 
     fn next_instruction_idx(&self) -> usize {
-        self.instructions
-            .len()
-            .try_into()
-            .expect("Maximum possible instructions in sub-program exceeded")
+        self.instructions.len()
     }
 
     fn insert_local(&mut self, name: String, is_const: bool) -> usize {
@@ -485,7 +477,7 @@ impl<'a> Context<'a> {
             name,
             Local {
                 index: self.next_local_idx,
-                is_const: is_const,
+                is_const,
             },
         );
 
@@ -496,7 +488,7 @@ impl<'a> Context<'a> {
     }
 
     fn get_local(&mut self, name: &String) -> Option<Local> {
-        self.locals.get(name).map(|l| *l)
+        self.locals.get(name).copied()
     }
 
     /// Gets the index of the given local for saving to, or creates a new variable if one does not exist.
@@ -663,15 +655,21 @@ impl<'a> Context<'a> {
         }
 
         match to_assign {
-            Assignable::Index { to_index, indices } => todo!(), // TODO: Need an instruction for indexing arrays
-            Assignable::Property { value, name } => todo!(), // TODO: Need an instruction for getting properties
+            Assignable::Index {
+                to_index: _,
+                indices: _,
+            } => todo!(), // TODO: Need an instruction for indexing arrays
+            Assignable::Property { value: _, name: _ } => todo!(), // TODO: Need an instruction for getting properties
             Assignable::Variable(name) => self.save(name, is_global, is_const, is_array),
         }
     }
 
     fn emit_call(&mut self, call: Call, using_return_value: bool) -> Result<()> {
         let name = match *call.callee {
-            Callee::Member { object, member } => todo!(),
+            Callee::Member {
+                object: _,
+                member: _,
+            } => todo!(),
             Callee::SubProgram(name) => name,
         };
 
@@ -734,8 +732,11 @@ impl<'a> Context<'a> {
             }
             Expression::ArrayLiteral(_) => todo!(),
             Expression::Assignable(expr) => match expr {
-                Assignable::Index { to_index, indices } => todo!(), // TODO: Need a function for indexing arrays
-                Assignable::Property { value, name } => todo!(), // TODO: Need a function for getting properties
+                Assignable::Index {
+                    to_index: _,
+                    indices: _,
+                } => todo!(), // TODO: Need a function for indexing arrays
+                Assignable::Property { value: _, name: _ } => todo!(), // TODO: Need a function for getting properties
                 Assignable::Variable(name) => {
                     self.load(name)?;
                 }
