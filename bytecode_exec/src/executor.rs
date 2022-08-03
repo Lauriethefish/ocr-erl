@@ -441,10 +441,36 @@ impl<const SIZE: usize> GenericStack<SIZE> {
         self.contents[self.top].clone()
     }
 
+    /// Removes the value at the top of the stack, and returns it.
+    /// Does no bounds checking.
+    #[inline(always)]
+    unsafe fn pop_unchecked(&mut self) -> Value {
+        self.top -= 1;
+        self.contents.get_unchecked(self.top).clone()
+    }
+
+    /// Removes the top two values from the stack and returns them.
+    /// Does no bounds checking.
+    #[inline(always)]
+    unsafe fn pop_twice_unchecked(&mut self) -> (Value, Value) {
+        self.top -= 2;
+        (
+            self.contents.get_unchecked(self.top + 1).clone(),
+            self.contents.get_unchecked(self.top).clone(),
+        )
+    }
+
     /// Returns a clone of the top value of the stack, without removing it.
     #[inline(always)]
     pub fn peek(&self) -> Value {
         self.contents[self.top - 1].clone()
+    }
+
+    /// Returns a clone of the top value of the stack, without removing it.
+    /// Does no bounds checking.
+    #[inline(always)]
+    unsafe fn peek_unchecked(&mut self) -> Value {
+        self.contents.get_unchecked(self.top - 1).clone()
     }
 
     /// Pushes a value to the top of the stack.
@@ -454,10 +480,29 @@ impl<const SIZE: usize> GenericStack<SIZE> {
         self.top += 1;
     }
 
+    /// Pushes a value to the top of the stack.
+    /// Does no bounds checking.
+    #[inline(always)]
+    unsafe fn push_unchecked(&mut self, value: Value) {
+        *self.contents.get_unchecked_mut(self.top) = value;
+        self.top += 1;
+    }
+
     /// Pushes the local with the given index to the top of the stack
     #[inline(always)]
     fn push_local(&mut self, idx: usize) {
         self.push(self.contents[self.bottom_func + idx as usize].clone());
+    }
+
+    /// Pushes the local with the given index to the top of the stack.
+    /// Does no bounds checking.
+    #[inline(always)]
+    unsafe fn push_local_unchecked(&mut self, idx: usize) {
+        self.push_unchecked(
+            self.contents
+                .get_unchecked(self.bottom_func + idx as usize)
+                .clone(),
+        );
     }
 
     /// Pushes the global with the given index (AKA the local of the main function with the given index) to the top the stack.
@@ -470,6 +515,12 @@ impl<const SIZE: usize> GenericStack<SIZE> {
     #[inline(always)]
     fn save_local(&mut self, idx: usize) {
         self.contents[self.bottom_func + idx] = self.pop();
+    }
+
+    /// Pops the value at the top of the stack and saves it to the given local.
+    #[inline(always)]
+    unsafe fn save_local_unchecked(&mut self, idx: usize) {
+        *self.contents.get_unchecked_mut(self.bottom_func + idx) = self.pop_unchecked();
     }
 
     /// Pops the value at the top of the stack and saves it to the given global.
@@ -605,64 +656,66 @@ fn execute_idx(
         match instruction {
             // Very repetitive code for binary operations.
             // This code could be moved elsewhere, but I decided against it, since the functions wouldn't be used much elsewhere.
-            Instruction::Add => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Integer(left + right))
-                }
-                (Value::Integer(right), Value::Real(left)) => {
-                    stack.push(Value::Real(left + right as f64))
-                }
-                (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(Value::Real(left as f64 + right))
-                }
-                (Value::Real(right), Value::Real(left)) => stack.push(Value::Real(left + right)),
-                (Value::String(right), Value::String(left)) => {
-                    stack.push(Value::String(RcStr::concat(&*left, &*right)))
-                }
+            Instruction::Add => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Integer(left + right))
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left + right as f64))
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left as f64 + right))
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left + right))
+                },
+                (Value::String(right), Value::String(left)) => unsafe {
+                    stack.push_unchecked(Value::String(RcStr::concat(&*left, &*right)))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Add)),
             },
-            Instruction::Subtract => match (stack.pop(), stack.pop()) {
+            Instruction::Subtract => match unsafe { stack.pop_twice_unchecked() } {
                 (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Integer(left - right))
+                    unsafe { stack.push_unchecked(Value::Integer(left - right)) }
                 }
                 (Value::Integer(right), Value::Real(left)) => {
-                    stack.push(Value::Real(left - right as f64))
+                    unsafe { stack.push_unchecked(Value::Real(left - right as f64)) }
                 }
                 (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(Value::Real(left as f64 - right))
+                    unsafe { stack.push_unchecked(Value::Real(left as f64 - right)) }
                 }
-                (Value::Real(right), Value::Real(left)) => stack.push(Value::Real(left - right)),
+                (Value::Real(right), Value::Real(left)) => unsafe { stack.push_unchecked(Value::Real(left - right)) },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Subtract)),
             },
-            Instruction::Multiply => match (stack.pop(), stack.pop()) {
+            Instruction::Multiply => match unsafe { stack.pop_twice_unchecked() } {
                 (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Integer(left * right))
+                    unsafe { stack.push_unchecked(Value::Integer(left * right)) }
                 }
                 (Value::Integer(right), Value::Real(left)) => {
-                    stack.push(Value::Real(left * right as f64))
+                    unsafe { stack.push_unchecked(Value::Real(left * right as f64)) }
                 }
                 (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(Value::Real(left as f64 * right))
+                    unsafe { stack.push_unchecked(Value::Real(left as f64 * right)) }
                 }
-                (Value::Real(right), Value::Real(left)) => stack.push(Value::Real(left * right)),
+                (Value::Real(right), Value::Real(left)) => unsafe { stack.push_unchecked(Value::Real(left * right)) },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Multiply)),
             },
-            Instruction::Divide => match (stack.pop(), stack.pop()) {
+            Instruction::Divide => match unsafe { stack.pop_twice_unchecked() } {
                 (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Real(left as f64 / right as f64))
+                    unsafe { stack.push_unchecked(Value::Real(left as f64 / right as f64)) }
                 }
                 (Value::Integer(right), Value::Real(left)) => {
-                    stack.push(Value::Real(left / right as f64))
+                    unsafe { stack.push_unchecked(Value::Real(left / right as f64)) }
                 }
                 (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(Value::Real(left as f64 / right))
+                    unsafe { stack.push_unchecked(Value::Real(left as f64 / right)) }
                 }
-                (Value::Real(right), Value::Real(left)) => stack.push(Value::Real(left / right)),
+                (Value::Real(right), Value::Real(left)) => unsafe { stack.push_unchecked(Value::Real(left / right)) },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Divide)),
             },
-            Instruction::Remainder => match (stack.pop(), stack.pop()) {
+            Instruction::Remainder => match unsafe { stack.pop_twice_unchecked() } {
                 (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Integer(left % right))
+                    unsafe { stack.push_unchecked(Value::Integer(left % right)) }
                 }
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Remainder)),
             },
@@ -687,135 +740,171 @@ fn execute_idx(
                 }
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Power)),
             },
-            Instruction::GreaterThan => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => stack.push(if left > right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Integer(right), Value::Real(left)) => stack.push(if left > right as f64 {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Integer(left)) => stack.push(if left as f64 > right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Real(left)) => stack.push(if left > right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
+            Instruction::GreaterThan => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left > right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left > right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left as f64 > right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left > right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
                 _ => {
                     return Err(RuntimeError::CannotBinaryOperate(
                         BinaryOperator::GreaterThan,
                     ))
                 }
             },
-            Instruction::GreaterThanOrEquals => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => stack.push(if left >= right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Integer(right), Value::Real(left)) => stack.push(if left >= right as f64 {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Integer(left)) => stack.push(if left as f64 >= right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Real(left)) => stack.push(if left >= right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
+            Instruction::GreaterThanOrEquals => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left >= right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left >= right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left as f64 >= right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left >= right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
                 _ => {
                     return Err(RuntimeError::CannotBinaryOperate(
                         BinaryOperator::GreaterThanOrEquals,
                     ))
                 }
             },
-            Instruction::LessThan => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => stack.push(if left < right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Integer(right), Value::Real(left)) => stack.push(if left < right as f64 {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(if (left as f64) < right as f64 {
+            Instruction::LessThan => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left < right {
                         Value::True
                     } else {
                         Value::False
                     })
-                }
-                (Value::Real(right), Value::Real(left)) => stack.push(if left < right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left < right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if (left as f64) < right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left < right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::LessThan)),
             },
-            Instruction::LessThanOrEquals => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => stack.push(if left <= right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Integer(right), Value::Real(left)) => stack.push(if left <= right as f64 {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(if (left as f64) <= right as f64 {
+            Instruction::LessThanOrEquals => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left <= right {
                         Value::True
                     } else {
                         Value::False
                     })
-                }
-                (Value::Real(right), Value::Real(left)) => stack.push(if left <= right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left <= right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if (left as f64) <= right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left <= right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
                 _ => {
                     return Err(RuntimeError::CannotBinaryOperate(
                         BinaryOperator::LessThanOrEquals,
                     ))
                 }
             },
-            Instruction::Equals => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => stack.push(if left == right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Integer(right), Value::Real(left)) => stack.push(if left == right as f64 {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Integer(left)) => stack.push(if left as f64 == right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Real(left)) => stack.push(if left == right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
+            Instruction::Equals => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left == right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left == right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left as f64 == right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left == right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
                 (Value::True, Value::True) => stack.push(Value::True),
                 (Value::True, Value::False) => stack.push(Value::False),
                 (Value::False, Value::True) => stack.push(Value::False),
@@ -823,33 +912,41 @@ fn execute_idx(
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Equals)),
             },
             Instruction::NotEquals => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => stack.push(if left != right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Integer(right), Value::Real(left)) => stack.push(if left != right as f64 {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Integer(left)) => stack.push(if left as f64 != right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
-                (Value::Real(right), Value::Real(left)) => stack.push(if left != right {
-                    Value::True
-                } else {
-                    Value::False
-                }),
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left != right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left != right as f64 {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(if left as f64 != right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(if left != right {
+                        Value::True
+                    } else {
+                        Value::False
+                    })
+                },
                 (Value::True, Value::True) => stack.push(Value::False),
                 (Value::True, Value::False) => stack.push(Value::True),
                 (Value::False, Value::True) => stack.push(Value::True),
                 (Value::False, Value::False) => stack.push(Value::False),
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::NotEquals)),
             },
-            Instruction::Not => match stack.pop() {
+            Instruction::Not => match unsafe { stack.pop_unchecked() } {
                 Value::True => stack.push(Value::False),
                 Value::False => stack.push(Value::True),
                 _ => {
@@ -858,7 +955,7 @@ fn execute_idx(
                     })
                 }
             },
-            Instruction::JumpIfTrue(idx) => match stack.pop() {
+            Instruction::JumpIfTrue(idx) => match unsafe { stack.pop_unchecked() } {
                 Value::True => {
                     state.instruction_ptr = *idx;
                     continue;
@@ -870,7 +967,7 @@ fn execute_idx(
                     })
                 }
             },
-            Instruction::JumpIfFalse(idx) => match stack.pop() {
+            Instruction::JumpIfFalse(idx) => match unsafe { stack.pop_unchecked() } {
                 Value::True => {}
                 Value::False => {
                     state.instruction_ptr = *idx;
@@ -882,10 +979,10 @@ fn execute_idx(
                     })
                 }
             },
-            Instruction::JumpIfFalsePopIfTrue(idx) => match stack.peek() {
-                Value::True => {
-                    stack.pop();
-                }
+            Instruction::JumpIfFalsePopIfTrue(idx) => match unsafe { stack.peek_unchecked() } {
+                Value::True => unsafe {
+                    stack.pop_unchecked();
+                },
                 Value::False => {
                     state.instruction_ptr = *idx;
                     continue;
@@ -896,14 +993,14 @@ fn execute_idx(
                     })
                 }
             },
-            Instruction::JumpIfTruePopIfFalse(idx) => match stack.peek() {
+            Instruction::JumpIfTruePopIfFalse(idx) => match unsafe { stack.peek_unchecked() } {
                 Value::True => {
                     state.instruction_ptr = *idx;
                     continue;
                 }
-                Value::False => {
-                    stack.pop();
-                }
+                Value::False => unsafe {
+                    stack.pop_unchecked();
+                },
                 _ => {
                     return Err(RuntimeError::WrongType {
                         expected: Type::Boolean,
@@ -945,23 +1042,25 @@ fn execute_idx(
 
                 let caller_state = match call_stack.pop() {
                     Some(state) => state,
-                    None => return Ok(Some(stack.pop())),
+                    None => return Ok(Some(unsafe { stack.pop_unchecked() })),
                 };
 
                 stack.return_to_caller(caller_state.stack);
                 state = caller_state.instruction;
             }
-            Instruction::LoadInteger(int) => stack.push(Value::Integer(*int)),
-            Instruction::LoadReal(real) => stack.push(Value::Real(*real)),
-            Instruction::LoadTrue => stack.push(Value::True),
-            Instruction::LoadFalse => stack.push(Value::False),
-            Instruction::LoadString(string) => stack.push(Value::String(string.clone())),
-            Instruction::Load(local_idx) => stack.push_local(*local_idx),
+            Instruction::LoadInteger(int) => unsafe { stack.push_unchecked(Value::Integer(*int)) },
+            Instruction::LoadReal(real) => unsafe { stack.push_unchecked(Value::Real(*real)) },
+            Instruction::LoadTrue => unsafe { stack.push_unchecked(Value::True) },
+            Instruction::LoadFalse => unsafe { stack.push_unchecked(Value::False) },
+            Instruction::LoadString(string) => unsafe {
+                stack.push_unchecked(Value::String(string.clone()))
+            },
+            Instruction::Load(local_idx) => unsafe { stack.push_local_unchecked(*local_idx) },
             Instruction::LoadGlobal(global_idx) => stack.push_global(*global_idx),
-            Instruction::Save(local_idx) => stack.save_local(*local_idx),
+            Instruction::Save(local_idx) => unsafe { stack.save_local_unchecked(*local_idx) },
             Instruction::SaveGlobal(global_idx) => stack.save_global(*global_idx),
             Instruction::Pop => {
-                stack.pop();
+                unsafe { stack.pop_unchecked() };
             }
             Instruction::Throw(err) => return Err((**err).clone()),
             Instruction::Nop => {}
