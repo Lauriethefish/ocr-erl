@@ -61,6 +61,8 @@ pub enum RuntimeError {
     CannotUnaryOperate(UnaryOperator),
     /// Thrown if IO fails
     IOError(String),
+    /// Thrown if a sub-program call would overflow the stack
+    StackOverflow,
 }
 
 impl Display for RuntimeError {
@@ -78,9 +80,10 @@ impl Display for RuntimeError {
             RuntimeError::CannotBinaryOperate(operation) => f.write_fmt(format_args!("cannot perform operation `{operation:?}` on the given types")),
             RuntimeError::CannotUnaryOperate(operation) => f.write_fmt(format_args!("cannot perform operation `{operation:?}` on the given type")),
             RuntimeError::FailedToConvert { value, converting_to } => f.write_fmt(format_args!("could not convert value `{value}` to type `{converting_to}`")),
-            RuntimeError::IOError(msg) => f.write_fmt(format_args!("IO Failed: {msg}")),
+            RuntimeError::IOError(msg) => f.write_fmt(format_args!("IO failed: {msg}")),
             RuntimeError::CannotReturnValueFromProcedure => f.write_str("cannot return a value from a procedure"),
             RuntimeError::MustReturnValueFromFunction => f.write_str("cannot exit a function without returning a value"),
+            RuntimeError::StackOverflow => f.write_str("stack overflow"),
         }
     }
 }

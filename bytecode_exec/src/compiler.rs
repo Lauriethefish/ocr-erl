@@ -11,8 +11,9 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
-    bytecode::{Instruction, Module, NativeSubProgramPtr, SubProgram},
+    bytecode::{Instruction, NativeCallInfo, SubProgram},
     err::RuntimeError,
+    executor::Module,
     rcstr::RcStr,
     stdlib,
 };
@@ -353,7 +354,6 @@ struct Local {
 }
 
 /// The context for compiling a particular sub-program
-#[derive(Debug)]
 struct Context<'a> {
     global_function_context: Option<Box<Context<'a>>>,
     available_sub_programs: &'a RefCell<HashMap<String, SubProgramCallInfo>>,
@@ -367,13 +367,13 @@ struct Context<'a> {
     is_function: bool,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 enum SubProgramType {
     Bytecode(usize),
-    Native(NativeSubProgramPtr),
+    Native(&'static NativeCallInfo),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 struct SubProgramCallInfo {
     r#type: SubProgramType,
     arg_count: usize,
@@ -857,14 +857,11 @@ impl<'a> Context<'a> {
 pub fn compile(program: Vec<RootStatement>) -> Module {
     let sub_programs_by_name = RefCell::new(HashMap::new());
 
-    let mut native_sub_programs = Vec::new();
     for (name, sub_program) in stdlib::BUILT_IN_SUB_PROGRAMS.into_iter() {
-        native_sub_programs.push(sub_program.ptr);
-
         sub_programs_by_name.borrow_mut().insert(
             name.to_string(),
             SubProgramCallInfo {
-                r#type: SubProgramType::Native(sub_program.ptr),
+                r#type: SubProgramType::Native(sub_program),
                 arg_count: sub_program.arg_count,
                 is_function: sub_program.is_function,
             },
@@ -926,5 +923,6 @@ pub fn compile(program: Vec<RootStatement>) -> Module {
     }
     sub_programs.push(global_ctx.finish());
 
-    Module { sub_programs }
+    let main_idx = sub_programs.len() - 1;
+    Module::new(sub_programs, main_idx)
 }

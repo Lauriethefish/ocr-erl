@@ -34,32 +34,6 @@ impl Debug for NativeSubProgramPtr {
     }
 }
 
-/// Contains all of the compiled sub-programs within an ERL file.
-#[derive(Clone)]
-pub struct Module {
-    /// The sub-programs within the ERL file.
-    /// Sub-programs have no name at runtime - they are merely represented by indices.
-    /// The last sub-program must always be the main procedure.
-    pub(crate) sub_programs: Vec<SubProgram>,
-}
-
-impl Module {
-    pub(crate) fn main_idx(&self) -> usize {
-        if self.sub_programs.is_empty() {
-            panic!("Main sub-program missing! There must always be a main procedure");
-        }
-        self.sub_programs.len() - 1
-    }
-}
-
-impl Debug for Module {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Module")
-            .field("sub_programs", &self.sub_programs)
-            .finish()
-    }
-}
-
 /// A compiled ERL sub-program
 #[derive(Clone, PartialEq)]
 pub(crate) struct SubProgram {
@@ -87,14 +61,33 @@ impl Debug for SubProgram {
         f.debug_struct("SubProgram")
             .field("local_count", &self.local_count)
             .field("arg_count", &self.arg_count)
-            .field("instructions", &InstructionFormatter { sub_program: self })
+            .field("instructions", &InstructionsFormatter { sub_program: self })
             .field("is_function", &self.is_function)
             .finish()
     }
 }
 
+/// Information required to call a native sub-program.
+#[derive(Copy, Clone)]
+pub(crate) struct NativeCallInfo {
+    /// The number of arguments in the native sub-program.
+    pub(crate) arg_count: usize,
+    /// Whether the sub-program is a function (returns a value).
+    pub(crate) is_function: bool,
+    /// The pointer to call the sub-program. (the sub-program itself manages properly popping arguments from the stack).
+    pub(crate) ptr: NativeSubProgramPtr,
+}
+
+impl PartialEq for NativeCallInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.arg_count == other.arg_count
+            && self.is_function == other.is_function
+            && self.ptr == other.ptr
+    }
+}
+
 /// An instruction within the bytecode.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) enum Instruction {
     /// Pops and adds the two values on the top of the stack, then pushes the result to the stack.
     Add,
@@ -170,7 +163,7 @@ pub(crate) enum Instruction {
     /// The arguments for the call must be pushed to the stack.
     /// When this instruction completes, the arguments will be popped off of the stack.
     /// If calling a function, the return value will be pushed to the stack.
-    CallNative(NativeSubProgramPtr),
+    CallNative(&'static NativeCallInfo),
     /// Returns from the current function with no return value.
     Return,
     /// Returns the value at the top of stack from the current function.
@@ -208,62 +201,65 @@ pub(crate) enum Instruction {
     Nop,
 }
 
-struct InstructionFormatter<'a> {
+impl Debug for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Instruction::Add => f.write_str("ADD"),
+            Instruction::Subtract => f.write_str("SUB"),
+            Instruction::Multiply => f.write_str("MUL"),
+            Instruction::Divide => f.write_str("DIV"),
+            Instruction::Remainder => f.write_str("REM"),
+            Instruction::Quotient => f.write_str("QOT"),
+            Instruction::Power => f.write_str("POW"),
+            Instruction::GreaterThan => f.write_str("GTN"),
+            Instruction::GreaterThanOrEquals => f.write_str("GOE"),
+            Instruction::LessThan => f.write_str("LTN"),
+            Instruction::LessThanOrEquals => f.write_str("LOE"),
+            Instruction::Equals => f.write_str("EQL"),
+            Instruction::NotEquals => f.write_str("NEQ"),
+            Instruction::Not => f.write_str("NOT"),
+            Instruction::JumpIfTrue(to_idx) => f.write_fmt(format_args!("JIT, idx: {to_idx}")),
+            Instruction::JumpIfFalse(to_idx) => f.write_fmt(format_args!("JIF, idx: {to_idx}")),
+            Instruction::JumpIfFalsePopIfTrue(to_idx) => {
+                f.write_fmt(format_args!("PJF, idx: {to_idx}"))
+            }
+            Instruction::JumpIfTruePopIfFalse(to_idx) => {
+                f.write_fmt(format_args!("PJT, idx: {to_idx}"))
+            }
+            Instruction::Jump(to_idx) => f.write_fmt(format_args!("JMP, idx: {to_idx}")),
+            Instruction::Call(call_idx) => f.write_fmt(format_args!("CLL, idx: {call_idx}")),
+            Instruction::CallNative(_) => f.write_str("CLN"),
+            Instruction::Return => f.write_str("RET"),
+            Instruction::ReturnValue => f.write_str("RTV"),
+            Instruction::LoadInteger(int) => f.write_fmt(format_args!("LIN, {int}")),
+            Instruction::LoadReal(real) => f.write_fmt(format_args!("LRL, {real}")),
+            Instruction::LoadTrue => f.write_str("LTR"),
+            Instruction::LoadFalse => f.write_str("LFL"),
+            Instruction::LoadString(string) => f.write_fmt(format_args!("LSR, \"{string}\"")),
+            Instruction::Load(local_idx) => f.write_fmt(format_args!("LLC, idx: {local_idx}")),
+            Instruction::LoadGlobal(global_idx) => {
+                f.write_fmt(format_args!("LGL, idx: {global_idx}"))
+            }
+            Instruction::Save(local_idx) => f.write_fmt(format_args!("SLC, idx: {local_idx}")),
+            Instruction::SaveGlobal(global_idx) => {
+                f.write_fmt(format_args!("SGL, idx: {global_idx}"))
+            }
+            Instruction::Pop => f.write_str("POP"),
+            Instruction::Throw(err) => f.write_fmt(format_args!("THW, {err}")),
+            Instruction::Nop => f.write_str("NOP"),
+        }
+    }
+}
+
+struct InstructionsFormatter<'a> {
     sub_program: &'a SubProgram,
 }
 
-impl Debug for InstructionFormatter<'_> {
+impl Debug for InstructionsFormatter<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("[ \n")?;
         for (idx, instruction) in self.sub_program.instructions.iter().enumerate() {
-            f.write_fmt(format_args!("  {idx}: "))?;
-            match instruction {
-                Instruction::Add => f.write_str("ADD"),
-                Instruction::Subtract => f.write_str("SUB"),
-                Instruction::Multiply => f.write_str("MUL"),
-                Instruction::Divide => f.write_str("DIV"),
-                Instruction::Remainder => f.write_str("REM"),
-                Instruction::Quotient => f.write_str("QOT"),
-                Instruction::Power => f.write_str("POW"),
-                Instruction::GreaterThan => f.write_str("GTN"),
-                Instruction::GreaterThanOrEquals => f.write_str("GOE"),
-                Instruction::LessThan => f.write_str("LTN"),
-                Instruction::LessThanOrEquals => f.write_str("LOE"),
-                Instruction::Equals => f.write_str("EQL"),
-                Instruction::NotEquals => f.write_str("NEQ"),
-                Instruction::Not => f.write_str("NOT"),
-                Instruction::JumpIfTrue(to_idx) => f.write_fmt(format_args!("JIT, idx: {to_idx}")),
-                Instruction::JumpIfFalse(to_idx) => f.write_fmt(format_args!("JIF, idx: {to_idx}")),
-                Instruction::JumpIfFalsePopIfTrue(to_idx) => {
-                    f.write_fmt(format_args!("PJF, idx: {to_idx}"))
-                }
-                Instruction::JumpIfTruePopIfFalse(to_idx) => {
-                    f.write_fmt(format_args!("PJT, idx: {to_idx}"))
-                }
-                Instruction::Jump(to_idx) => f.write_fmt(format_args!("JMP, idx: {to_idx}")),
-                Instruction::Call(call_idx) => f.write_fmt(format_args!("CLL, idx: {call_idx}")),
-                Instruction::CallNative(_) => f.write_str("CLN"),
-                Instruction::Return => f.write_str("RET"),
-                Instruction::ReturnValue => f.write_str("RTV"),
-                Instruction::LoadInteger(int) => f.write_fmt(format_args!("LIN, {int}")),
-                Instruction::LoadReal(real) => f.write_fmt(format_args!("LRL, {real}")),
-                Instruction::LoadTrue => f.write_str("LTR"),
-                Instruction::LoadFalse => f.write_str("LFL"),
-                Instruction::LoadString(string) => f.write_fmt(format_args!("LSR, \"{string}\"")),
-                Instruction::Load(local_idx) => f.write_fmt(format_args!("LLC, idx: {local_idx}")),
-                Instruction::LoadGlobal(global_idx) => {
-                    f.write_fmt(format_args!("LGL, idx: {global_idx}"))
-                }
-                Instruction::Save(local_idx) => f.write_fmt(format_args!("SLC, idx: {local_idx}")),
-                Instruction::SaveGlobal(global_idx) => {
-                    f.write_fmt(format_args!("SGL, idx: {global_idx}"))
-                }
-                Instruction::Pop => f.write_str("POP"),
-                Instruction::Throw(err) => f.write_fmt(format_args!("THW, {err}")),
-                Instruction::Nop => f.write_str("NOP"),
-            }?;
-
-            f.write_str(",\n")?;
+            f.write_fmt(format_args!("  {idx}: {instruction:?},\n"))?;
         }
         f.write_str("]")?;
 

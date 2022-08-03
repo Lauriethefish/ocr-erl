@@ -3,7 +3,7 @@
 //! This module defines the functions available to the running ERL programs,
 //! and also defines the type system, with the enums [Value] and [Type].
 
-use crate::bytecode::NativeSubProgramPtr;
+use crate::bytecode::NativeCallInfo;
 use crate::err::RuntimeError;
 
 use crate::rcstr::RcStr;
@@ -157,17 +157,6 @@ impl Display for Type {
     }
 }
 
-/// Information required to call a native sub-program.
-#[derive(Copy, Clone)]
-pub(crate) struct NativeCallInfo {
-    /// The number of arguments in the native sub-program.
-    pub(crate) arg_count: usize,
-    /// Whether the sub-program is a function (returns a value).
-    pub(crate) is_function: bool,
-    /// The pointer to call the sub-program. (the sub-program itself manages properly popping arguments from the stack).
-    pub(crate) ptr: NativeSubProgramPtr,
-}
-
 macro_rules! func_args {
     ($stack:ident, $arg:ident:$type:ty $(, $next_arg:ident:$next_type:ty)*) => {
         let $arg = ConvertArg::<$type>::try_into($stack.pop())?;
@@ -186,10 +175,10 @@ macro_rules! count_args {
 macro_rules! erl_func {
     (($($next_arg:ident:$next_type:ty),*), $code:block) =>
         {
-            NativeCallInfo {
-                ptr: NativeSubProgramPtr(|stack| {
+            $crate::bytecode::NativeCallInfo {
+                ptr: $crate::bytecode::NativeSubProgramPtr(|stack| {
                     func_args!(stack, $($next_arg:$next_type),*);
-                    let result: Result<Value, RuntimeError> = { $code };
+                    let result: Result<$crate::stdlib::Value, $crate::err::RuntimeError> = { $code };
                     stack.push(result?);
 
                     Ok(())
@@ -203,10 +192,10 @@ macro_rules! erl_func {
 macro_rules! erl_proc {
     (($($next_arg:ident:$next_type:ty),*), $code:block) =>
         {
-            NativeCallInfo {
-                ptr: NativeSubProgramPtr(|stack| {
+            $crate::bytecode::NativeCallInfo {
+                ptr: $crate::bytecode::NativeSubProgramPtr(|stack| {
                     func_args!(stack, $($next_arg:$next_type),*);
-                    let result: Result<(), RuntimeError> = { $code };
+                    let result: Result<(), $crate::err::RuntimeError> = { $code };
 
                     result
                 }),
