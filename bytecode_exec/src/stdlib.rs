@@ -16,7 +16,9 @@ use std::io::Write;
 mod tests {
     use super::*;
 
+    /// Value size is very important for interpreter performance, avoid a regression.
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn value_size_should_be_sixteen_bytes_or_less() {
         assert!(std::mem::size_of::<Value>() <= 16)
     }
