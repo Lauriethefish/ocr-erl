@@ -118,17 +118,29 @@ pub(crate) enum Instruction {
     /// The result is then pushed to the stack.
     Power,
 
-    /// Pops two values at the top of the stack. The result is then pushed to the stack.
+    /// Pops two values at the top of the stack.
+    /// If the beneath value is greater than the top-of-stack value, `true` is pushed to stack.
+    /// Otherwise, `false` is pushed to stack.
     GreaterThan,
-    /// Pops two values at the top of the stack. The result is then pushed to the stack.
+    /// Pops two values at the top of the stack.
+    /// If the beneath value is greater than or equal to the top-of-stack value, `true` is pushed to stack.
+    /// Otherwise, `false` is pushed to stack.
     GreaterThanOrEquals,
-    /// Pops two values at the top of the stack. The result is then pushed to the stack.
+    /// Pops two values at the top of the stack.
+    /// If the beneath value is less than the top-of-stack value, `true` is pushed to stack.
+    /// Otherwise, `false` is pushed to stack.
     LessThan,
-    /// Pops two values at the top of the stack. The result is then pushed to the stack.
+    /// Pops two values at the top of the stack.
+    /// If the beneath value is less than or equal to the top-of-stack value, `true` is pushed to stack.
+    /// Otherwise, `false` is pushed to stack.
     LessThanOrEquals,
-    /// Pops two values from the top of the stack. The result is then pushed to the stack.
+    /// Pops two values at the top of the stack.
+    /// If they are equal, `true` is pushed to stack.
+    /// Otherwise, `false` is pushed to stack.
     Equals,
-    /// Pops two values from the top of the stack. The result is then pushed to the stack.
+    /// Pops two values at the top of the stack.
+    /// If they are not equal, `true` is pushed to stack..
+    /// Otherwise, `false` is pushed to stack.
     NotEquals,
     /// Pops a boolean value from the top of the stack, then pushes the opposite boolean value to the stack.
     Not,
