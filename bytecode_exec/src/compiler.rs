@@ -571,16 +571,16 @@ impl<'a> Context<'a> {
             let pending_jump_idx = self.emit(Instruction::Nop);
             self.emit_full_block(segment.block);
 
-            self.replace(
-                pending_jump_idx,
-                Instruction::JumpIfFalse(self.next_instruction_idx()),
-            );
-
             // If this segment is not the last segment, or there is an else block, we need to insert
             // a jump out of the `if` statement at this point, to avoid executing the subsequent segments.
             if idx != last_segment_idx || else_block.is_some() {
                 replace_with_jump_out.push(self.emit(Instruction::Nop));
             }
+
+            self.replace(
+                pending_jump_idx,
+                Instruction::JumpIfFalse(self.next_instruction_idx()),
+            );
         }
 
         if let Some(else_block) = else_block {
