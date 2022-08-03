@@ -888,6 +888,23 @@ pub fn compile(program: Vec<RootStatement>) -> Module {
                 argument_names,
                 is_function,
             } => {
+                // To allow recursion, we will first construct the `SubProgramCallInfo` for this sub-program.
+                let idx = sub_programs.len();
+                let call_info = SubProgramCallInfo {
+                    r#type: SubProgramType::Bytecode(idx),
+                    arg_count: argument_names.len(),
+                    is_function,
+                };
+
+                // ...and insert it into the map of available sub-programs before compiling
+                let mut sub_program_map = sub_programs_by_name.borrow_mut();
+                if sub_program_map.contains_key(&name) {
+                    global_ctx.emit_throw(RuntimeError::DuplicateSubProgramName(name));
+                    break;
+                }
+                sub_program_map.insert(name.clone(), call_info);
+                drop(sub_program_map); // Drop the borrow to allow the sub-programs map to be accessed by the compiler.
+
                 let mut ctx = Context::new(
                     Some(global_ctx),
                     &sub_programs_by_name,
@@ -895,29 +912,14 @@ pub fn compile(program: Vec<RootStatement>) -> Module {
                     is_function,
                 );
                 ctx.emit_full_block(block);
-
                 global_ctx = *ctx
                     .global_function_context
                     .take()
                     .expect("Global context must exist as it was passed in above");
                 let mut sub_program = ctx.finish();
+
                 sub_program.name = Some(name.clone());
-
-                let idx = sub_programs.len();
-                let call_info = SubProgramCallInfo {
-                    r#type: SubProgramType::Bytecode(idx),
-                    arg_count: sub_program.arg_count,
-                    is_function,
-                };
                 sub_programs.push(sub_program);
-
-                let mut sub_program_map = sub_programs_by_name.borrow_mut();
-                if sub_program_map.contains_key(&name) {
-                    global_ctx.emit_throw(RuntimeError::DuplicateSubProgramName(name));
-                    break;
-                }
-
-                sub_program_map.insert(name, call_info);
             }
         }
     }
