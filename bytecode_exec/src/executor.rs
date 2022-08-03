@@ -138,7 +138,7 @@ struct CheckedSubProgram {
 impl Debug for CheckedSubProgram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "{:?} (max stack size: {})",
+            "{:#?} (max stack size: {})",
             self.inner, self.max_stack_size
         ))
     }
