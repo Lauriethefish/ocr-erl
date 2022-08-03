@@ -563,7 +563,10 @@ impl<'a> Context<'a> {
         segments: Vec<IfSegment>,
         else_block: Option<Vec<Statement>>,
     ) -> Result<()> {
-        for segment in segments {
+        let mut replace_with_jump_out = Vec::new();
+
+        let last_segment_idx = segments.len() - 1;
+        for (idx, segment) in segments.into_iter().enumerate() {
             self.emit_expression(segment.condition)?;
             let pending_jump_idx = self.emit(Instruction::Nop);
             self.emit_full_block(segment.block);
@@ -572,10 +575,20 @@ impl<'a> Context<'a> {
                 pending_jump_idx,
                 Instruction::JumpIfFalse(self.next_instruction_idx()),
             );
+
+            // If this segment is not the last segment, or there is an else block, we need to insert
+            // a jump out of the `if` statement at this point, to avoid executing the subsequent segments.
+            if idx != last_segment_idx || else_block.is_some() {
+                replace_with_jump_out.push(self.emit(Instruction::Nop));
+            }
         }
 
         if let Some(else_block) = else_block {
             self.emit_full_block(else_block);
+        }
+
+        for idx in replace_with_jump_out {
+            self.replace(idx, Instruction::Jump(self.next_instruction_idx()));
         }
 
         Ok(())
