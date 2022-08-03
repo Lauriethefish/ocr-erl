@@ -309,14 +309,16 @@ impl Module {
                     // If an error instruction is found, the code path from this point onwards should be ignored.
                     // Thus, we will continue checking stack sizes at the next instruction that already has a stack size
                     // assigned, since this instruction must be reachable by a jump in the instructions already iterated.
-                    while idx < sub_program.instructions.len() {
-                        idx += 1; // Run this first to skip the current instruction
 
+                    idx += 1; // Run this first to skip the current instruction
+                    while idx < sub_program.instructions.len() {
                         // Once we reach an instruction that could be jumped too, continue checking stack sizes at that point
                         if let Some(other_size) = stack_sizes_before_idx[idx] {
                             size = other_size; // Ignore the stack size after throwing
                             break;
                         }
+
+                        idx += 1;
                     }
 
                     continue;
