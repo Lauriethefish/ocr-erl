@@ -199,6 +199,7 @@ impl<const SIZE: usize> GenericStack<SIZE> {
     /// All values within the stack will be `Value::Integer(0)`.
     fn new() -> Self {
         let mut elements = Vec::new();
+        elements.reserve_exact(SIZE);
         for _ in 0..SIZE {
             elements.push(Value::Integer(0));
         }
