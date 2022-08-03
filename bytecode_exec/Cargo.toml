@@ -6,3 +6,10 @@ edition = "2021"
 [dependencies]
 erl_parser = { path = "../parser" }
 phf = { version = "0.11", features = ["macros"] }
+
+[dev-dependencies]
+criterion = { version = "0.3", features = ["html_reports"] }
+
+[[bench]]
+name = "stress_tests"
+harness = false
