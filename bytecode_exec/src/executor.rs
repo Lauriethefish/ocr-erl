@@ -675,48 +675,54 @@ fn execute_idx(
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Add)),
             },
             Instruction::Subtract => match unsafe { stack.pop_twice_unchecked() } {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Integer(left - right)) }
-                }
-                (Value::Integer(right), Value::Real(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left - right as f64)) }
-                }
-                (Value::Real(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left as f64 - right)) }
-                }
-                (Value::Real(right), Value::Real(left)) => unsafe { stack.push_unchecked(Value::Real(left - right)) },
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Integer(left - right))
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left - right as f64))
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left as f64 - right))
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left - right))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Subtract)),
             },
             Instruction::Multiply => match unsafe { stack.pop_twice_unchecked() } {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Integer(left * right)) }
-                }
-                (Value::Integer(right), Value::Real(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left * right as f64)) }
-                }
-                (Value::Real(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left as f64 * right)) }
-                }
-                (Value::Real(right), Value::Real(left)) => unsafe { stack.push_unchecked(Value::Real(left * right)) },
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Integer(left * right))
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left * right as f64))
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left as f64 * right))
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left * right))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Multiply)),
             },
             Instruction::Divide => match unsafe { stack.pop_twice_unchecked() } {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left as f64 / right as f64)) }
-                }
-                (Value::Integer(right), Value::Real(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left / right as f64)) }
-                }
-                (Value::Real(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Real(left as f64 / right)) }
-                }
-                (Value::Real(right), Value::Real(left)) => unsafe { stack.push_unchecked(Value::Real(left / right)) },
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left as f64 / right as f64))
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left / right as f64))
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left as f64 / right))
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left / right))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Divide)),
             },
             Instruction::Remainder => match unsafe { stack.pop_twice_unchecked() } {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    unsafe { stack.push_unchecked(Value::Integer(left % right)) }
-                }
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Integer(left % right))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Remainder)),
             },
             Instruction::Quotient => match (stack.pop(), stack.pop()) {
