@@ -86,5 +86,31 @@ exec_bench!(bench_collatz,
     expected_result: None
 );
 
-criterion_group!(benches, bench_primes, bench_sum, bench_collatz);
+exec_bench!(bench_fibonacci,
+    id: "find 92nd number in the fibonacci sequence",
+    code: "
+    function fibonacci(n)
+        a = 1
+        b = 1
+        for i = 2 to n
+            after = a + b
+            a = b
+            b = after
+        next i
+
+        return a
+    endfunction
+    ",
+    func: "fibonacci",
+    args: &[Value::Integer(92)],
+    expected_result: Some(Value::Integer(7540113804746346429))
+);
+
+criterion_group!(
+    benches,
+    bench_primes,
+    bench_sum,
+    bench_collatz,
+    bench_fibonacci
+);
 criterion_main!(benches);
