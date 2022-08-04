@@ -34,18 +34,31 @@ mod tests {
 }
 
 /// Any value with the language at runtime.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Value {
     /// Integer values
     Integer(i64),
     /// Real values, represented as floating point
     Real(f64),
-    /// String values
-    String(RcStr),
     /// `true` boolean value
     True,
     /// `false` boolean value
     False,
+    /// String values
+    String(RcStr),
+}
+
+/// Optimised clone implementation for [Value].
+impl Clone for Value {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        match self {
+            Self::String(string) => Self::String(string.clone()),
+            // Using `ptr::read` here provideed a 6-7% speedup in some benchmarks compared to the default clone impl
+            // SAFETY: All other variants of `Value` can be safely copied.
+            _ => unsafe { std::ptr::read(self as *const Value) },
+        }
+    }
 }
 
 impl Value {
