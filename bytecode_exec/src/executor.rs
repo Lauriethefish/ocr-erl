@@ -17,14 +17,19 @@ mod tests {
 
     #[test]
     fn stack_new_should_fill_with_zeroed_ints() {
-        for value in Stack::new().contents.iter() {
+        for value in Stack::new(64).contents.iter() {
             assert_eq!(&Value::Integer(0), value);
         }
     }
 
     #[test]
+    fn stack_new_should_create_with_correct_size() {
+        assert_eq!(64, Stack::new(64).contents.len());
+    }
+
+    #[test]
     fn stack_push_should_assign_and_increment_ptr() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         stack.push(Value::Integer(5));
         assert_eq!(Value::Integer(5), stack.contents[0]);
         assert_eq!(1, stack.top);
@@ -32,7 +37,7 @@ mod tests {
 
     #[test]
     fn stack_pop_should_clone_and_decrement_ptr() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         stack.contents[0] = Value::Integer(6);
         stack.top = 1;
         assert_eq!(Value::Integer(6), stack.pop());
@@ -41,7 +46,7 @@ mod tests {
 
     #[test]
     fn stack_push_local_should_push_from_bottom_of_locals() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         stack.contents[0] = Value::Integer(5); // This will act as our first local
         stack.top = 1;
 
@@ -52,7 +57,7 @@ mod tests {
 
     #[test]
     fn stack_push_global_should_push_from_bottom_of_stack() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         stack.contents[0] = Value::Integer(5); // This will act as our first global
 
         stack.bottom_func = 1; // Set the bottom of our current function to above the global
@@ -66,7 +71,7 @@ mod tests {
 
     #[test]
     fn stack_save_local_should_assign_to_bottom_of_locals() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         // Assign an example value
         stack.contents[0] = Value::Integer(5);
         stack.contents[1] = Value::Integer(6); // Value that we are saving to the local
@@ -79,7 +84,7 @@ mod tests {
 
     #[test]
     fn stack_save_global_should_assign_to_bottom_of_stack() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         // Assign an example value
         stack.contents[0] = Value::Integer(5);
         stack.contents[1] = Value::Integer(6); // Value that we are saving to the local
@@ -98,7 +103,7 @@ mod tests {
             stack_frame_top: 10,
             stack_frame_bottom: 5,
         };
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
         stack.move_to_caller(exec_state);
 
         assert_eq!(10, stack.top);
@@ -107,7 +112,7 @@ mod tests {
 
     #[test]
     fn stack_return_to_caller_should_push_result() {
-        let mut stack = Stack::new();
+        let mut stack = Stack::new(64);
 
         // Place a value at the top of the stack for returning
         stack.contents[9] = Value::Integer(10);
@@ -402,33 +407,28 @@ struct ExecState<'a> {
     stack: StackState,
 }
 
-/// The default stack, with a size of 4096 values.
-pub(crate) type Stack = GenericStack<4096>;
-
 /// A virtual stack for the interpreter.
-pub(crate) struct GenericStack<const SIZE: usize> {
+pub(crate) struct Stack {
     /// The values within the stack.
-    contents: [Value; SIZE],
+    contents: Box<[Value]>,
     /// The stack index of the first local variable within the current sub-program
     bottom_func: usize,
     /// The stack index of the first value that is NOT part of the stack
     top: usize,
 }
 
-impl<const SIZE: usize> GenericStack<SIZE> {
+impl Stack {
     /// Creates a new stack with the given size.
     /// All values within the stack will be `Value::Integer(0)`.
-    fn new() -> Self {
+    fn new(size: usize) -> Self {
         let mut elements = Vec::new();
-        elements.reserve_exact(SIZE);
-        for _ in 0..SIZE {
+        elements.reserve_exact(size);
+        for _ in 0..size {
             elements.push(Value::Integer(0));
         }
 
         Self {
-            contents: elements
-                .try_into()
-                .expect("Enough elements added to fill length"),
+            contents: elements.into(),
             bottom_func: 0,
             top: 0,
         }
@@ -543,7 +543,7 @@ impl<const SIZE: usize> GenericStack<SIZE> {
 
         // Verify that the maxiumum offset the called sub-program could reach
         // from the bottom of its stack frame is still within the stack.
-        if at_start_of_locals + callee.max_stack_size >= SIZE {
+        if at_start_of_locals + callee.max_stack_size >= self.contents.len() {
             return Err(RuntimeError::StackOverflow); // Otherwise, the stack has overflowed.
         }
 
@@ -610,7 +610,7 @@ fn execute_idx(
     args: &[Value],
 ) -> Result<Option<Value>, RuntimeError> {
     // Create the stack which holds values being used by functions
-    let mut stack = Stack::new();
+    let mut stack = Stack::new(4096);
     // Create the call stack
     let mut call_stack = Vec::new();
 
