@@ -1,3 +1,5 @@
+#![deny(unsafe_op_in_unsafe_fn)]
+
 //! An stack-based virtual machine for executing OCR Exam Reference Language.
 //!
 //! # Examples
@@ -15,6 +17,7 @@ pub mod compiler;
 pub mod err;
 pub mod executor;
 pub mod rcstr;
+mod stack;
 pub mod stdlib;
 
 /// Compiles the given AST into an ERL module and executes it.
