@@ -533,7 +533,10 @@ impl Stack {
     /// If calling [`Stack::pop`] twice would panic, calling this function is undefined bebaviour.
     #[inline(always)]
     pub unsafe fn pop_twice_unchecked(&mut self) -> (Value, Value) {
-        debug_assert!(self.size >= 2, "Called `pop_twice_unchecked` with a stack size smaller than 2");
+        debug_assert!(
+            self.size >= 2,
+            "Called `pop_twice_unchecked` with a stack size smaller than 2"
+        );
         debug_assert!(
             (self.size - 1) > self.end_locals_idx,
             "Attempted to `pop_twice_unchecked` a local variable"
@@ -541,8 +544,12 @@ impl Stack {
 
         self.size -= 2;
         (
-            unsafe { self.contents.get_unchecked(self.size + 1).assume_init_read()},
-            unsafe { self.contents.get_unchecked(self.size).assume_init_read() }
+            unsafe {
+                self.contents
+                    .get_unchecked(self.size + 1)
+                    .assume_init_read()
+            },
+            unsafe { self.contents.get_unchecked(self.size).assume_init_read() },
         )
     }
 
