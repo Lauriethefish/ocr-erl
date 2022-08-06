@@ -450,7 +450,7 @@ impl Stack {
 
     /// Pushes the given value to the top of the stack.
     /// Returns `Ok` if the stack is not full, or `Err` with [`RuntimeError::StackOverflow`] if the stack is full.
-    #[inline]
+    #[inline(always)]
     pub fn push(&mut self, value: Value) -> Result<(), RuntimeError> {
         match self.contents.get_mut(self.size) {
             Some(uninit) => {
@@ -467,15 +467,16 @@ impl Stack {
     ///
     /// # Safety
     /// Calling this function is undefined behaviour if the stack is full.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn push_unchecked(&mut self, value: Value) {
-        // SAFETY: It is up to the caller to uphold that the stack is NOT full before calling this function.
-        // If the stack is not full, then `self.size` must point to a valid element within `contents`.
         debug_assert!(
             self.size < self.contents.len(),
             "Called `push_unchecked` with full stack"
         );
-        unsafe { self.contents.get_unchecked_mut(self.size) }.write(value);
+
+        // SAFETY: It is up to the caller to uphold that the stack is NOT full before calling this function.
+        // If the stack is not full, then `self.size` must point to a valid element within `contents`.
+        unsafe { self.contents.get_unchecked_mut(self.size).write(value) };
         self.size += 1;
     }
 
@@ -483,7 +484,7 @@ impl Stack {
     ///
     /// # Panics
     /// Panics if the stack is empty, or if attempting to pop a local variable from the stack.
-    #[inline]
+    #[inline(always)]
     pub fn pop(&mut self) -> Value {
         assert!(self.size > 0, "Attempted to `pop` when stack size was 0");
         assert!(
@@ -507,9 +508,9 @@ impl Stack {
     ///
     /// # Safety
     /// If calling [`Stack::pop`] would panic, calling this function is undefined bebaviour.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn pop_unchecked(&mut self) -> Value {
-        debug_assert!(self.size != 0, "Called `pop_unchecked` with empty stack");
+        debug_assert!(self.size >= 1, "Called `pop_unchecked` with empty stack");
         debug_assert!(
             self.size > self.end_locals_idx,
             "Attempted to `pop_unchecked` a local variable"
@@ -526,12 +527,31 @@ impl Stack {
         }
     }
 
+    /// Removes the value at the top of the stack and returns it.
+    ///
+    /// # Safety
+    /// If calling [`Stack::pop`] twice would panic, calling this function is undefined bebaviour.
+    #[inline(always)]
+    pub unsafe fn pop_twice_unchecked(&mut self) -> (Value, Value) {
+        debug_assert!(self.size >= 2, "Called `pop_twice_unchecked` with a stack size smaller than 2");
+        debug_assert!(
+            (self.size - 1) > self.end_locals_idx,
+            "Attempted to `pop_twice_unchecked` a local variable"
+        );
+
+        self.size -= 2;
+        (
+            unsafe { self.contents.get_unchecked(self.size + 1).assume_init_read()},
+            unsafe { self.contents.get_unchecked(self.size).assume_init_read() }
+        )
+    }
+
     /// Pushes the value of a local variable within the current stack frame.
     ///
     /// # Panics
     /// This function will panic if `idx` is greater than or equal to the `local_count` passed to
     /// the last call to [`Stack::begin_stack_frame()`].
-    #[inline]
+    #[inline(always)]
     pub fn push_local(&mut self, idx: usize) -> Result<(), RuntimeError> {
         let local_idx = self.first_local_idx + idx;
         assert!(
@@ -558,7 +578,7 @@ impl Stack {
     /// * The stack is full.
     /// * `idx` is greater than or equal to the `local_count` passed to
     /// the last call to [`Stack::begin_stack_frame()`]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn push_local_unchecked(&mut self, idx: usize) {
         let local_idx = self.first_local_idx + idx;
         debug_assert!(
@@ -585,7 +605,7 @@ impl Stack {
     /// This function will panic if:
     /// * The stack is empty.
     /// * Attempting to pop a local variable from the stack.
-    #[inline]
+    #[inline(always)]
     pub fn save_to_local(&mut self, idx: usize) {
         let local_idx = self.first_local_idx + idx;
         assert!(
@@ -604,7 +624,7 @@ impl Stack {
     ///
     /// # Safety
     /// The result of this function is undefined behaviour if calling [`Stack::save_to_local`] with `idx` would panic.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn save_to_local_unchecked(&mut self, idx: usize) {
         let local_idx = self.first_local_idx + idx;
         debug_assert!(
@@ -617,7 +637,11 @@ impl Stack {
 
         // SAFETY: If the local is within the locals of the last call to `begin_stack_frame` (as verified by the caller),
         // `local_idx` must be less than `self.size`, and thus it is within the bounds of `contents`.
-        unsafe { self.contents.get_unchecked_mut(local_idx).write(value) };
+        unsafe {
+            let local_ref = self.contents.get_unchecked_mut(local_idx);
+            local_ref.assume_init_drop();
+            local_ref.write(value);
+        }
     }
 
     /// Begins a stack frame with the given number of arguments and number of local variables.
@@ -678,7 +702,7 @@ impl Stack {
         Ok(pre_call_frame)
     }
 
-    #[inline]
+    #[inline(always)]
     fn reduce_size(&mut self, to: usize) {
         while self.size > to {
             self.size -= 1;
