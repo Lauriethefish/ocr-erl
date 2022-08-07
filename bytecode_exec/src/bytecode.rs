@@ -54,7 +54,7 @@ impl Debug for NativeSubProgramPtr {
 ///
 /// Additionally, none of the instructions will ever push more than [`SubProgram::max_stack_space`] - [`SubProgram::local_count`] values
 /// to the stack in total. None of the instructions will ever pop a local off of the stack either.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Module {
     /// The sub-programs within the ERL file.
     sub_programs: Vec<SubProgram>,
