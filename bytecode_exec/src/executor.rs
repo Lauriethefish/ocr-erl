@@ -7,131 +7,11 @@ use crate::{
     bytecode::{Instruction, SubProgram},
     err::RuntimeError,
     rcstr::RcStr,
+    stack::{Stack, StackFrame},
     stdlib::{Type, Value},
 };
 
 use std::fmt::Debug;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stack_new_should_fill_with_zeroed_ints() {
-        for value in Stack::new(64).contents.iter() {
-            assert_eq!(&Value::Integer(0), value);
-        }
-    }
-
-    #[test]
-    fn stack_new_should_create_with_correct_size() {
-        assert_eq!(64, Stack::new(64).contents.len());
-    }
-
-    #[test]
-    fn stack_push_should_assign_and_increment_ptr() {
-        let mut stack = Stack::new(64);
-        stack.push(Value::Integer(5));
-        assert_eq!(Value::Integer(5), stack.contents[0]);
-        assert_eq!(1, stack.top);
-    }
-
-    #[test]
-    fn stack_pop_should_clone_and_decrement_ptr() {
-        let mut stack = Stack::new(64);
-        stack.contents[0] = Value::Integer(6);
-        stack.top = 1;
-        assert_eq!(Value::Integer(6), stack.pop());
-        assert_eq!(0, stack.top);
-    }
-
-    #[test]
-    fn stack_push_local_should_push_from_bottom_of_locals() {
-        let mut stack = Stack::new(64);
-        stack.contents[0] = Value::Integer(5); // This will act as our first local
-        stack.top = 1;
-
-        stack.push_local(0); // Push our first local to stack
-        assert_eq!(Value::Integer(5), stack.contents[1]); // Should be pushed above the local
-        assert_eq!(2, stack.top);
-    }
-
-    #[test]
-    fn stack_push_global_should_push_from_bottom_of_stack() {
-        let mut stack = Stack::new(64);
-        stack.contents[0] = Value::Integer(5); // This will act as our first global
-
-        stack.bottom_func = 1; // Set the bottom of our current function to above the global
-        stack.top = 1;
-        stack.push_global(0);
-
-        // The global, which is not within our function, should be read instead of the first local
-        assert_eq!(Value::Integer(5), stack.contents[1]);
-        assert_eq!(2, stack.top);
-    }
-
-    #[test]
-    fn stack_save_local_should_assign_to_bottom_of_locals() {
-        let mut stack = Stack::new(64);
-        // Assign an example value
-        stack.contents[0] = Value::Integer(5);
-        stack.contents[1] = Value::Integer(6); // Value that we are saving to the local
-        stack.top = 2;
-
-        stack.save_local(0);
-        assert_eq!(Value::Integer(6), stack.contents[0]); // Local should be replaced with our variable
-        assert_eq!(1, stack.top);
-    }
-
-    #[test]
-    fn stack_save_global_should_assign_to_bottom_of_stack() {
-        let mut stack = Stack::new(64);
-        // Assign an example value
-        stack.contents[0] = Value::Integer(5);
-        stack.contents[1] = Value::Integer(6); // Value that we are saving to the local
-        stack.top = 2;
-        stack.bottom_func = 1; // Set the bottom of our current function to above the global
-
-        stack.save_global(0);
-        // Despite the global being below the bottom of the stack frame, it should still be assigned to
-        assert_eq!(Value::Integer(6), stack.contents[0]);
-        assert_eq!(1, stack.top);
-    }
-
-    #[test]
-    fn stack_move_to_caller_should_restore_stack_frame() {
-        let exec_state = StackState {
-            stack_frame_top: 10,
-            stack_frame_bottom: 5,
-        };
-        let mut stack = Stack::new(64);
-        stack.move_to_caller(exec_state);
-
-        assert_eq!(10, stack.top);
-        assert_eq!(5, stack.bottom_func);
-    }
-
-    #[test]
-    fn stack_return_to_caller_should_push_result() {
-        let mut stack = Stack::new(64);
-
-        // Place a value at the top of the stack for returning
-        stack.contents[9] = Value::Integer(10);
-        stack.top = 10;
-
-        // We are assuming that we called the function from the bottom of the stack
-        let exec_state = StackState {
-            stack_frame_top: 0,
-            stack_frame_bottom: 0,
-        };
-
-        stack.return_to_caller(exec_state);
-
-        // The return value should be pushed to the top of the stack
-        assert_eq!(Value::Integer(10), stack.contents[0]);
-        assert_eq!(1, stack.top);
-    }
-}
 
 #[derive(Clone, PartialEq)]
 struct CheckedSubProgram {
@@ -299,14 +179,18 @@ impl Module {
                 // Returning a value requires a value on the top of the stack to be popped.
                 Instruction::ReturnValue => Self::diff(&mut size, -1),
 
-                // Loading always pushes one value to stack.
+                // Loading constants always pushes one value to stack.
                 Instruction::LoadInteger(_)
                 | Instruction::LoadReal(_)
                 | Instruction::LoadTrue
                 | Instruction::LoadFalse
-                | Instruction::LoadString(_)
-                | Instruction::Load(_)
-                | Instruction::LoadGlobal(_) => Self::diff(&mut size, 1),
+                | Instruction::LoadString(_) => Self::diff(&mut size, 1),
+
+                Instruction::Load(local_idx) => {
+                    assert!(*local_idx < sub_program.local_count, "Local out of range");
+                    Self::diff(&mut size, 1);
+                }
+                Instruction::LoadGlobal(global_idx) => {}
 
                 // Saving always pops one value from stack.
                 Instruction::Save(_) | Instruction::SaveGlobal(_) => Self::diff(&mut size, -1),
@@ -373,14 +257,6 @@ impl Debug for Module {
     }
 }
 
-/// Stores the current state of the stack during paused execution of a function
-struct StackState {
-    /// The top of the stack frame
-    stack_frame_top: usize,
-    /// The bottom of the stack frame (where local variables start)
-    stack_frame_bottom: usize,
-}
-
 /// Stores the currently executing instruction of a sub-program
 struct InstructionState<'a> {
     /// The sub-program being executed
@@ -404,179 +280,8 @@ impl<'a> InstructionState<'a> {
 struct ExecState<'a> {
     /// The instruction to continue with when execution is resumed
     instruction: InstructionState<'a>,
-    /// The stack state when execution was paused.
-    stack: StackState,
-}
-
-/// A virtual stack for the interpreter.
-pub(crate) struct Stack {
-    /// The values within the stack.
-    contents: Box<[Value]>,
-    /// The stack index of the first local variable within the current sub-program
-    bottom_func: usize,
-    /// The stack index of the first value that is NOT part of the stack
-    top: usize,
-}
-
-impl Stack {
-    /// Creates a new stack with the given size.
-    /// All values within the stack will be `Value::Integer(0)`.
-    fn new(size: usize) -> Self {
-        let mut elements = Vec::new();
-        elements.reserve_exact(size);
-        for _ in 0..size {
-            elements.push(Value::Integer(0));
-        }
-
-        Self {
-            contents: elements.into(),
-            bottom_func: 0,
-            top: 0,
-        }
-    }
-
-    /// Removes the value at the top of the stack, and returns it.
-    #[inline(always)]
-    pub(crate) fn pop(&mut self) -> Value {
-        self.top -= 1;
-        self.contents[self.top].clone()
-    }
-
-    /// Removes the value at the top of the stack, and returns it.
-    /// Does no bounds checking.
-    #[inline(always)]
-    unsafe fn pop_unchecked(&mut self) -> Value {
-        self.top -= 1;
-        self.contents.get_unchecked(self.top).clone()
-    }
-
-    /// Removes the top two values from the stack and returns them.
-    /// Does no bounds checking.
-    #[inline(always)]
-    unsafe fn pop_twice_unchecked(&mut self) -> (Value, Value) {
-        self.top -= 2;
-        (
-            self.contents.get_unchecked(self.top + 1).clone(),
-            self.contents.get_unchecked(self.top).clone(),
-        )
-    }
-
-    /// Returns a clone of the top value of the stack, without removing it.
-    #[inline(always)]
-    pub fn peek(&self) -> Value {
-        self.contents[self.top - 1].clone()
-    }
-
-    /// Returns a clone of the top value of the stack, without removing it.
-    /// Does no bounds checking.
-    #[inline(always)]
-    unsafe fn peek_unchecked(&mut self) -> Value {
-        self.contents.get_unchecked(self.top - 1).clone()
-    }
-
-    /// Pushes a value to the top of the stack.
-    #[inline(always)]
-    pub(crate) fn push(&mut self, value: Value) {
-        self.contents[self.top] = value;
-        self.top += 1;
-    }
-
-    /// Pushes a value to the top of the stack.
-    /// Does no bounds checking.
-    #[inline(always)]
-    unsafe fn push_unchecked(&mut self, value: Value) {
-        *self.contents.get_unchecked_mut(self.top) = value;
-        self.top += 1;
-    }
-
-    /// Pushes the local with the given index to the top of the stack
-    #[inline(always)]
-    fn push_local(&mut self, idx: usize) {
-        self.push(self.contents[self.bottom_func + idx as usize].clone());
-    }
-
-    /// Pushes the local with the given index to the top of the stack.
-    /// Does no bounds checking.
-    #[inline(always)]
-    unsafe fn push_local_unchecked(&mut self, idx: usize) {
-        self.push_unchecked(
-            self.contents
-                .get_unchecked(self.bottom_func + idx as usize)
-                .clone(),
-        );
-    }
-
-    /// Pushes the global with the given index (AKA the local of the main function with the given index) to the top the stack.
-    #[inline(always)]
-    fn push_global(&mut self, idx: usize) {
-        self.push(self.contents[idx as usize].clone());
-    }
-
-    /// Pops the value at the top of the stack and saves it to the given local.
-    #[inline(always)]
-    fn save_local(&mut self, idx: usize) {
-        self.contents[self.bottom_func + idx] = self.pop();
-    }
-
-    /// Pops the value at the top of the stack and saves it to the given local.
-    #[inline(always)]
-    unsafe fn save_local_unchecked(&mut self, idx: usize) {
-        *self.contents.get_unchecked_mut(self.bottom_func + idx) = self.pop_unchecked();
-    }
-
-    /// Pops the value at the top of the stack and saves it to the given global.
-    #[inline(always)]
-    fn save_global(&mut self, idx: usize) {
-        self.contents[idx as usize] = self.pop();
-    }
-
-    /// Moves the top and bottom of the current stack frame so that the bottom of the frame
-    /// starts at the beginning of the arguments pushed by the caller, and the top of the frame
-    /// points to the first position that is not within the local variables of the function.
-    #[inline(always)]
-    fn move_to_function_call(
-        &mut self,
-        callee: &CheckedSubProgram,
-    ) -> Result<StackState, RuntimeError> {
-        // The top arg_count values on the stack serve as arguments to the sub-program, and the sub-program's arguments
-        // are its first `arg_count` local variables.
-        let at_start_of_locals = self.top - callee.inner.arg_count as usize;
-
-        // Verify that the maxiumum offset the called sub-program could reach
-        // from the bottom of its stack frame is still within the stack.
-        if at_start_of_locals + callee.max_stack_size >= self.contents.len() {
-            return Err(RuntimeError::StackOverflow); // Otherwise, the stack has overflowed.
-        }
-
-        // After execution, the arguments for this sub-program should no longer be on stack.
-        let state = StackState {
-            // Thus, the index of the first argument becomes the new top of the stack (which is the first index *not* in the stack)
-            stack_frame_top: at_start_of_locals,
-            stack_frame_bottom: self.bottom_func,
-        };
-
-        self.bottom_func = at_start_of_locals;
-        // Pushes to the stack after calling should push above the locals
-        self.top = self.bottom_func + callee.inner.local_count as usize;
-        Ok(state)
-    }
-
-    /// Moves to the given caller of the current function, assuming that there is no return value.
-    #[inline(always)]
-    fn move_to_caller(&mut self, exec_state: StackState) {
-        self.bottom_func = exec_state.stack_frame_bottom;
-        self.top = exec_state.stack_frame_top;
-    }
-
-    /// Moves to the given caller of the current function, pushing the return value to the stack.
-    #[inline(always)]
-    fn return_to_caller(&mut self, exec_state: StackState) {
-        let return_value = self.pop();
-
-        self.move_to_caller(exec_state);
-
-        self.push(return_value);
-    }
+    /// The stack frame in which execution was paused.
+    frame: StackFrame,
 }
 
 /// Executes the main sub-program within the given module
@@ -603,22 +308,34 @@ pub fn execute_by_name(
     Err(RuntimeError::NoSuchSubProgram(name.to_owned()))
 }
 
+#[inline]
+fn begin_stack_frame(
+    stack: &mut Stack,
+    sub_program: &CheckedSubProgram,
+) -> Result<StackFrame, RuntimeError> {
+    stack.begin_new_stack_frame(
+        sub_program.inner.arg_count,
+        sub_program.inner.local_count,
+        sub_program.max_stack_size,
+    )
+}
+
 /// Executes the sub program with the given index within the given module.
-#[inline(always)]
+#[inline(never)]
 fn execute_idx(
     module: &Module,
     sub_program_idx: usize,
     args: &[Value],
 ) -> Result<Option<Value>, RuntimeError> {
     // Create the stack which holds values being used by functions
-    let mut stack = Stack::new(4096);
-    // Create the call stack
+    let mut stack = Stack::new(8192);
     let mut call_stack = Vec::new();
 
-    // Move the stack pointer to after the locals of the main procedure (to make global variables available to other sub-programs
-    // and to make local variables available to main)
+    // Begin a new stack frame for the main procedure.
+    // This is important since it makes the local variables of the main procedure
+    // (which are known as global variables) available to other sub-programs.
     let main_proc = &module.sub_programs[module.main_idx];
-    stack.move_to_function_call(main_proc)?;
+    begin_stack_frame(&mut stack, main_proc)?;
 
     // Prepare the stack for the sub-program we're starting execution at, if it isn't main
     let entry_sub_program = &module.sub_programs[sub_program_idx];
@@ -635,14 +352,15 @@ fn execute_idx(
             });
         }
 
-        // Simulate a function call to the sub-program
+        // Push the arguments of the entry sub-program to the stack.
         for arg in args {
-            stack.push(arg.clone());
+            stack.push(arg.clone())?;
         }
-        stack.move_to_function_call(entry_sub_program)?;
+        // Simulate a call to the entry sub-program
+        begin_stack_frame(&mut stack, entry_sub_program)?;
     }
 
-    // Start execution at the beginning of the given sub-program
+    // Start execution at the beginning of the entry sub-program
     let mut state = InstructionState::at_beginning_of(&entry_sub_program.inner);
     loop {
         let instruction = match state
@@ -726,25 +444,25 @@ fn execute_idx(
                 },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Remainder)),
             },
-            Instruction::Quotient => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Integer(left / right))
-                }
+            Instruction::Quotient => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Integer(left / right))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Quotient)),
             },
-            Instruction::Power => match (stack.pop(), stack.pop()) {
-                (Value::Integer(right), Value::Integer(left)) => {
-                    stack.push(Value::Integer(left.pow(right as u32)))
-                }
-                (Value::Integer(right), Value::Real(left)) => {
-                    stack.push(Value::Real(left.powf(right as f64)))
-                }
-                (Value::Real(right), Value::Integer(left)) => {
-                    stack.push(Value::Real((left as f64).powf(right)))
-                }
-                (Value::Real(right), Value::Real(left)) => {
-                    stack.push(Value::Real(left.powf(right)))
-                }
+            Instruction::Power => match unsafe { stack.pop_twice_unchecked() } {
+                (Value::Integer(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Integer(left.pow(right as u32)))
+                },
+                (Value::Integer(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left.powf(right as f64)))
+                },
+                (Value::Real(right), Value::Integer(left)) => unsafe {
+                    stack.push_unchecked(Value::Real((left as f64).powf(right)))
+                },
+                (Value::Real(right), Value::Real(left)) => unsafe {
+                    stack.push_unchecked(Value::Real(left.powf(right)))
+                },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Power)),
             },
             Instruction::GreaterThan => match unsafe { stack.pop_twice_unchecked() } {
@@ -912,13 +630,13 @@ fn execute_idx(
                         Value::False
                     })
                 },
-                (Value::True, Value::True) => stack.push(Value::True),
-                (Value::True, Value::False) => stack.push(Value::False),
-                (Value::False, Value::True) => stack.push(Value::False),
-                (Value::False, Value::False) => stack.push(Value::True),
+                (Value::True, Value::True) => unsafe { stack.push_unchecked(Value::True) },
+                (Value::True, Value::False) => unsafe { stack.push_unchecked(Value::False) },
+                (Value::False, Value::True) => unsafe { stack.push_unchecked(Value::False) },
+                (Value::False, Value::False) => unsafe { stack.push_unchecked(Value::True) },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::Equals)),
             },
-            Instruction::NotEquals => match (stack.pop(), stack.pop()) {
+            Instruction::NotEquals => match unsafe { stack.pop_twice_unchecked() } {
                 (Value::Integer(right), Value::Integer(left)) => unsafe {
                     stack.push_unchecked(if left != right {
                         Value::True
@@ -947,15 +665,15 @@ fn execute_idx(
                         Value::False
                     })
                 },
-                (Value::True, Value::True) => stack.push(Value::False),
-                (Value::True, Value::False) => stack.push(Value::True),
-                (Value::False, Value::True) => stack.push(Value::True),
-                (Value::False, Value::False) => stack.push(Value::False),
+                (Value::True, Value::True) => unsafe { stack.push_unchecked(Value::False) },
+                (Value::True, Value::False) => unsafe { stack.push_unchecked(Value::True) },
+                (Value::False, Value::True) => unsafe { stack.push_unchecked(Value::True) },
+                (Value::False, Value::False) => unsafe { stack.push_unchecked(Value::False) },
                 _ => return Err(RuntimeError::CannotBinaryOperate(BinaryOperator::NotEquals)),
             },
             Instruction::Not => match unsafe { stack.pop_unchecked() } {
-                Value::True => stack.push(Value::False),
-                Value::False => stack.push(Value::True),
+                Value::True => unsafe { stack.push_unchecked(Value::False) },
+                Value::False => unsafe { stack.push_unchecked(Value::True) },
                 _ => {
                     return Err(RuntimeError::WrongType {
                         expected: Type::Boolean,
@@ -1020,11 +738,11 @@ fn execute_idx(
             }
             Instruction::Call(func_idx) => {
                 let to_call = &module.sub_programs[*func_idx as usize];
-                let stack_state = stack.move_to_function_call(to_call)?;
+                let pre_call_frame = begin_stack_frame(&mut stack, to_call)?;
 
                 call_stack.push(ExecState {
                     instruction: state,
-                    stack: stack_state,
+                    frame: pre_call_frame,
                 });
                 state = InstructionState::at_beginning_of(&to_call.inner);
                 continue;
@@ -1039,7 +757,7 @@ fn execute_idx(
                     None => return Ok(None),
                 };
 
-                stack.move_to_caller(caller_state.stack);
+                stack.return_to_frame(caller_state.frame);
                 state = caller_state.instruction;
             }
             Instruction::ReturnValue => {
@@ -1052,7 +770,7 @@ fn execute_idx(
                     None => return Ok(Some(unsafe { stack.pop_unchecked() })),
                 };
 
-                stack.return_to_caller(caller_state.stack);
+                stack.return_value_to_frame(caller_state.frame);
                 state = caller_state.instruction;
             }
             Instruction::LoadInteger(int) => unsafe { stack.push_unchecked(Value::Integer(*int)) },
@@ -1063,9 +781,13 @@ fn execute_idx(
                 stack.push_unchecked(Value::String(string.clone()))
             },
             Instruction::Load(local_idx) => unsafe { stack.push_local_unchecked(*local_idx) },
-            Instruction::LoadGlobal(global_idx) => stack.push_global(*global_idx),
-            Instruction::Save(local_idx) => unsafe { stack.save_local_unchecked(*local_idx) },
-            Instruction::SaveGlobal(global_idx) => stack.save_global(*global_idx),
+            Instruction::LoadGlobal(global_idx) => unsafe {
+                stack.push_global_unchecked(*global_idx)
+            },
+            Instruction::Save(local_idx) => unsafe { stack.save_to_local_unchecked(*local_idx) },
+            Instruction::SaveGlobal(global_idx) => unsafe {
+                stack.save_to_global_unchecked(*global_idx)
+            },
             Instruction::Pop => {
                 unsafe { stack.pop_unchecked() };
             }

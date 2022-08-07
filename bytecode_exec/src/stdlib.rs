@@ -192,7 +192,7 @@ macro_rules! erl_func {
                 ptr: $crate::bytecode::NativeSubProgramPtr(|stack| {
                     func_args!(stack, $($next_arg:$next_type),*);
                     let result: Result<$crate::stdlib::Value, $crate::err::RuntimeError> = { $code };
-                    stack.push(result?);
+                    stack.push(result?)?;
 
                     Ok(())
                 }),

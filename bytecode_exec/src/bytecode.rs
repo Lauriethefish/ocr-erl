@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use crate::{err::RuntimeError, executor::Stack, rcstr::RcStr};
+use crate::{err::RuntimeError, rcstr::RcStr, stack::Stack};
 
 #[cfg(test)]
 mod tests {
