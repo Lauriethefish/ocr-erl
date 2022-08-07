@@ -244,7 +244,6 @@ impl Clone for RcStr {
 }
 
 impl Drop for RcStr {
-    #[inline(always)]
     fn drop(&mut self) {
         let header = self.header();
         // After this instance is dropped, the number of references to the contained string will be reduced by 1.
