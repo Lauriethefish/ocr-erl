@@ -34,6 +34,277 @@ impl Debug for NativeSubProgramPtr {
     }
 }
 
+/// Contains all of the compiled sub-programs within an ERL file.
+/// Encapsulates the compiled sub-programs, and runs checks to uphold certain guarantees about the instructions
+/// within them. These guarantees are required for the executor to safely execute the bytecode.
+///
+/// # Instruction Guarantees
+/// - For [Instruction]s `Add`, `Subtract`, `Multiply`, `Divide`, `Remainder`, `Quotient`, `Power`, `GreaterThan`,
+/// `GreaterThanOrEquals`, `LessThan`, `LessThanOrEquals`, `Equals` and `NotEquals`, at least two values will be pushed
+/// to stack by preceeding instructions.
+/// - For [Instruction]s `Not`, `JumpIfTrue`, `JumpIfFalse`, `JumpIfFalsePopIfTrue`, `JumpIfTruePopIfFalse`,
+///  `Save`, `SaveGlobal`, `Pop`, and `ReturnValue`, at least one value will be pushed to stack by preceeding instructions.
+/// - For [`Instruction::Call`], the given sub-program index will return a valid sub-program when passed to [`Module::sub_program`]. It is also
+/// guaranteed that at least [`SubProgram::arg_count`] values will be pushed to the stack by preceeding instructions.
+/// - For [`Instruction::CallNative`], at least [`NativeCallInfo::arg_count`] values will be pushed to the stack by preceeding instructions.
+/// - For [`Instruction::Load`] and [`Instruction::Save`], the given local index must be less than the [`SubProgram::local_count`] within the
+/// sub-program when there instruction is invoked.
+/// - For [`Instruction::LoadGlobal`] and [`Instruction::SaveGlobal`], the given global index must be less than the [`SubProgram::local_count`]
+/// within the main procedure.
+///
+/// Additionally, none of the instructions will ever push more than [`SubProgram::max_stack_space`] - [`SubProgram::local_count`] values
+/// to the stack in total. None of the instructions will ever pop a local off of the stack either.
+#[derive(Clone)]
+pub struct Module {
+    /// The sub-programs within the ERL file.
+    sub_programs: Vec<SubProgram>,
+
+    /// The index of the main sub-program within the module.
+    main_idx: usize,
+}
+
+impl Module {
+    /// Creates a new [Module].
+    ///
+    /// # Arguments
+    /// * `sub_programs` - the sub-programs within the module.
+    /// * `main_idx` - the index of the main procedure within `sub_programs`.
+    ///
+    /// # Panics
+    /// This function will panic if:
+    /// * `main_idx` is out of bounds of `sub_programs`
+    /// * `main_idx` points to a function.
+    /// * `main_idx` points to a sub-program that has more than 0 arguments.
+    /// * The instructions within the sub-programs do not uphold the guarantees specified in the documentation for [Module].
+    pub(crate) fn new(mut sub_programs: Vec<SubProgram>, main_idx: usize) -> Module {
+        let main = sub_programs
+            .get(main_idx)
+            .expect("The given `main_idx` was outside `sub_programs`");
+        assert!(
+            !main.is_function,
+            "The sub-program pointed to by `main_idx` wasn't a procedure"
+        );
+        assert_eq!(
+            main.arg_count, 0,
+            "The sub-program pointed to by `main_idx` must have zero arguments"
+        );
+
+        for i in 0..sub_programs.len() {
+            sub_programs[i].max_stack_space =
+                Self::verify_sub_program(&sub_programs, &sub_programs[i], &sub_programs[main_idx]);
+        }
+
+        Module {
+            sub_programs,
+            main_idx,
+        }
+    }
+
+    /// Checks the instructions within the given sub-program to verify that they uphold the guarantees specified in [Module].
+    /// Returns the maximum stack space that could be required for the sub-program to run, including the locals.
+    fn verify_sub_program(
+        sub_programs: &[SubProgram],
+        sub_program: &SubProgram,
+        main: &SubProgram,
+    ) -> usize {
+        // Keeps track of the stack size before each instruction.
+        // This allows us to make sure that each instruction is only reachable with one stack-size.
+        // If `None` is the value for a given instruction index, this means that the instruction is yet to be reached.
+        let mut stack_sizes_before_idx = vec![None; sub_program.instructions.len()];
+
+        let mut size: isize = 0;
+        let mut max_size: isize = size;
+
+        let mut idx = 0;
+        while idx < sub_program.instructions.len() {
+            // Add the stack size before this instruction, or, if this instruction has already been jumped to
+            // elsewhere, verify that the stack size after the jump matches the stack size at this point.
+            Self::add_or_verify_size_matches(&mut stack_sizes_before_idx, idx, size);
+
+            match &sub_program.instructions[idx] {
+                Instruction::Add
+                | Instruction::Subtract
+                | Instruction::Multiply
+                | Instruction::Divide
+                | Instruction::Remainder
+                | Instruction::Quotient
+                | Instruction::Power
+                | Instruction::GreaterThan
+                | Instruction::GreaterThanOrEquals
+                | Instruction::LessThan
+                | Instruction::LessThanOrEquals
+                | Instruction::Equals
+                | Instruction::NotEquals => {
+                    // All binary operators pop 2 operands and then push the result
+                    // Note that we can NOT just use an overall diff of -1, since we need to verify that there are
+                    // two values on the stack available to be popped.
+                    Self::diff(&mut size, -2);
+                    Self::diff(&mut size, 1);
+                }
+                Instruction::Not => {
+                    // While the overall diff here is 0, we must verify that we
+                    // can pop one value of the stack to perform the operation on.
+                    Self::diff(&mut size, -1);
+                    Self::diff(&mut size, 1);
+                }
+                Instruction::JumpIfTrue(to) | Instruction::JumpIfFalse(to) => {
+                    Self::diff(&mut size, -1); // Popping off the `true`/`false` argument
+
+                    // Make sure that the size of the stack before executing the instruction we're jumping to matches the stack size after this jump.
+                    Self::add_or_verify_size_matches(&mut stack_sizes_before_idx, *to, size);
+                }
+                Instruction::JumpIfFalsePopIfTrue(to) | Instruction::JumpIfTruePopIfFalse(to) => {
+                    // Make sure that the size of the stack before executing the instruction we're jumping to matches the stack size after this jump.
+                    Self::add_or_verify_size_matches(&mut stack_sizes_before_idx, *to, size);
+                    Self::diff(&mut size, -1); // If execution continues in the current path, the stack size will decrease by 1
+                }
+                Instruction::Jump(to) => {
+                    // Make sure that the size of the stack before executing the instruction we're jumping to matches the stack size after this jump.
+                    Self::add_or_verify_size_matches(&mut stack_sizes_before_idx, *to, size);
+                }
+                Instruction::Call(idx) => {
+                    let to_call = sub_programs
+                        .get(*idx)
+                        .expect("Invalid sub-program idx in call");
+
+                    // To call, we need at least the correct number of arguments on stack
+                    Self::diff(&mut size, -(to_call.arg_count as isize));
+
+                    // After a function call, an extra value is pushed to stack
+                    if to_call.is_function {
+                        Self::diff(&mut size, 1);
+                    }
+                }
+                Instruction::CallNative(to_call) => {
+                    // To call, we need at least the correct number of arguments on stack
+                    Self::diff(&mut size, -(to_call.arg_count as isize));
+
+                    // After a function call, an extra value is pushed to stack
+                    if to_call.is_function {
+                        Self::diff(&mut size, 1);
+                    }
+                }
+                Instruction::Return => {}
+                // Returning a value requires a value on the top of the stack to be popped.
+                Instruction::ReturnValue => Self::diff(&mut size, -1),
+
+                // Loading constants always pushes one value to stack.
+                Instruction::LoadInteger(_)
+                | Instruction::LoadReal(_)
+                | Instruction::LoadTrue
+                | Instruction::LoadFalse
+                | Instruction::LoadString(_) => Self::diff(&mut size, 1),
+
+                Instruction::Load(local_idx) => {
+                    // Verify that the local_idx is within bounds
+                    assert!(
+                        *local_idx < sub_program.local_count,
+                        "Local load out of range of `local_count` within the sub-program"
+                    );
+                    Self::diff(&mut size, 1);
+                }
+                Instruction::LoadGlobal(global_idx) => {
+                    // Verify that the global_idx is within bounds
+                    assert!(
+                        *global_idx < main.local_count,
+                        "Global load out of range of `local_count` within the main sub-program"
+                    );
+                    Self::diff(&mut size, 1);
+                }
+
+                Instruction::Save(local_idx) => {
+                    // Verify that the local_idx is within bounds
+                    assert!(
+                        *local_idx < sub_program.local_count,
+                        "Local save out of range of `local_count` within the sub-program"
+                    );
+                    Self::diff(&mut size, -1); // Make sure that enough stack space is available
+                }
+                Instruction::SaveGlobal(global_idx) => {
+                    // Verify that the global_idx is within bounds
+                    assert!(
+                        *global_idx < main.local_count,
+                        "Global load out of range of `local_count` within the main sub-program"
+                    );
+                    Self::diff(&mut size, -1); // Make sure that enough stack space is available
+                }
+                Instruction::Pop => Self::diff(&mut size, -1),
+                Instruction::Throw(_) => {
+                    // If an error instruction is found, the code path from this point onwards should be ignored.
+                    // Thus, we will continue checking stack sizes at the next instruction that already has a stack size
+                    // assigned, since this instruction must be reachable by a jump in the instructions already iterated.
+
+                    idx += 1; // Run this first to skip the current instruction
+                    while idx < sub_program.instructions.len() {
+                        // Once we reach an instruction that could be jumped too, continue checking stack sizes at that point
+                        if let Some(other_size) = stack_sizes_before_idx[idx] {
+                            size = other_size; // Ignore the stack size after throwing
+                            break;
+                        }
+
+                        idx += 1;
+                    }
+
+                    continue;
+                }
+                Instruction::Nop => {}
+            };
+
+            if size > max_size {
+                max_size = size;
+            }
+
+            idx += 1;
+        }
+
+        // The maximum stack size from pushing instructions + the number of locals gives us how much space we need in total to call this function.
+        (max_size as usize) + sub_program.local_count
+    }
+
+    fn add_or_verify_size_matches(sizes: &mut [Option<isize>], idx: usize, size: isize) {
+        match sizes[idx] {
+            Some(existing) => {
+                if existing != size {
+                    panic!("Instruction idx {idx} can be reached with multiple stack sizes!")
+                }
+            }
+            None => sizes[idx] = Some(size),
+        }
+    }
+
+    fn diff(size: &mut isize, diff: isize) {
+        let new_size = size
+            .checked_add(diff)
+            .expect("Executing this code will result in a stack overflow!");
+        assert!(
+            new_size >= 0,
+            "Executing this code will result in a stack underflow"
+        );
+
+        *size = new_size;
+    }
+
+    /// Gets the index of the main procedure within this [Module].
+    pub(crate) fn main_idx(&self) -> usize {
+        self.main_idx
+    }
+
+    /// Gets a reference to the main procedure within this [Module].
+    pub(crate) fn main(&self) -> &SubProgram {
+        &self.sub_programs[self.main_idx]
+    }
+
+    /// Gets a slice of all of the sub-programs within this [Module].
+    pub(crate) fn sub_programs(&self) -> &[SubProgram] {
+        &self.sub_programs
+    }
+
+    /// Gets a reference to the sub-program at index `idx`.
+    pub(crate) fn sub_program(&self, idx: usize) -> &SubProgram {
+        &self.sub_programs[idx]
+    }
+}
+
 /// A compiled ERL sub-program
 #[derive(Clone, PartialEq)]
 pub(crate) struct SubProgram {
@@ -43,6 +314,11 @@ pub(crate) struct SubProgram {
 
     /// The number of arguments of the sub-program.
     pub(crate) arg_count: usize,
+
+    /// The maximum number of values on the stack that this function needs in order to execute.
+    /// This includes the local variables (which includes the arguments).
+    /// Do not worry about setting this field manually, it is automatically set when creating a [Module].
+    pub(crate) max_stack_space: usize,
 
     /// The instructions within the sub-program.
     pub(crate) instructions: Vec<Instruction>,

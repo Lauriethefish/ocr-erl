@@ -11,9 +11,9 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
+    bytecode::Module,
     bytecode::{Instruction, NativeCallInfo, SubProgram},
     err::RuntimeError,
-    executor::Module,
     rcstr::RcStr,
     stdlib,
 };
@@ -76,7 +76,8 @@ mod tests {
                 arg_count: 1,
                 instructions: vec![Instruction::Nop],
                 is_function: true,
-                name: None
+                name: None,
+                max_stack_space: 0
             },
             ctx.finish()
         )
@@ -418,7 +419,8 @@ impl<'a> Context<'a> {
             arg_count: self.arg_count,
             instructions: self.instructions,
             is_function: self.is_function,
-            name: None, // Set later in `compile_module`
+            name: None,         // Set later in `compile_module`
+            max_stack_space: 0, // Set later by `Module::new`
         }
     }
 
