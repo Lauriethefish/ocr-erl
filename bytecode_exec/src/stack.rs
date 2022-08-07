@@ -212,10 +212,61 @@ mod tests {
     #[should_panic(
         expected = "Attempted to read from a local outside the range of the locals within the stack frame"
     )]
-    fn stack_push_local_should_dbg_assert_local_within_range() {
+    fn stack_push_local_unchecked_should_dbg_assert_local_within_range() {
         let mut stack = Stack::new(10);
 
         unsafe { stack.push_local_unchecked(0) };
+    }
+
+    #[test]
+    fn stack_push_global_should_increment_ptr_and_assign_to_contents() {
+        let mut stack = Stack::new(10);
+
+        // Simulate a global variable at index 0 on the stack
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        // Make sure that index 1 is the start of the locals, not index 0.
+        stack.first_local_idx = 1;
+        stack.end_locals_idx = 1;
+        stack.size = 1;
+
+        stack.push_global(0).unwrap();
+        assert_eq!(Value::Integer(5), unsafe {
+            stack.contents[0].assume_init_read()
+        });
+        assert_eq!(2, stack.size);
+    }
+
+    #[test]
+    #[should_panic(expected = "Attempted to `push_global` with an out-of-range global idx")]
+    fn stack_push_global_should_panic_if_global_out_of_range() {
+        let mut stack = Stack::new(10);
+        stack.push_global(0).unwrap();
+    }
+
+    #[test]
+    fn stack_push_global_unchecked_should_increment_ptr_and_assign_to_contents() {
+        let mut stack = Stack::new(10);
+
+        // Simulate a global variable at index 0 on the stack
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        // Make sure that index 1 is the start of the locals, not index 0.
+        stack.first_local_idx = 1;
+        stack.end_locals_idx = 1;
+        stack.size = 1;
+
+        unsafe { stack.push_global_unchecked(0) };
+        assert_eq!(Value::Integer(5), unsafe {
+            stack.contents[0].assume_init_read()
+        });
+        assert_eq!(2, stack.size);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Attempted to `push_global_unchecked` with an out-of-range global idx")]
+    fn stack_push_global_unchecked_should_panic_if_global_out_of_range() {
+        let mut stack = Stack::new(10);
+        unsafe { stack.push_global_unchecked(0) };
     }
 
     #[test]
@@ -288,6 +339,81 @@ mod tests {
 
         unsafe {
             stack.save_to_local_unchecked(0);
+        }
+    }
+
+    #[test]
+    fn stack_save_to_global_should_decrement_ptr_and_write_to_global() {
+        let mut stack = Stack::new(10);
+
+        // Simulate a global variable at index 0 on the stack
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        // Make sure that index 1 is the start of the locals, not index 0.
+        stack.first_local_idx = 1;
+        stack.end_locals_idx = 1;
+        stack.size = 1;
+
+        stack.contents[1] = MaybeUninit::new(Value::Integer(6));
+        stack.size = 2;
+
+        stack.save_to_global(0);
+
+        // The stack size should be decremented, as save_to_global pops from the top of the stack
+        assert_eq!(1, stack.size);
+        // The value at the top of the stack should be saved to the global
+        assert_eq!(Value::Integer(6), unsafe {
+            stack.contents[0].assume_init_read()
+        })
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Attempted to `save_to_global` with an out-of-range global idx"
+    )]
+    fn stack_save_to_global_should_panic_if_global_out_of_range() {
+        let mut stack = Stack::new(10);
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        stack.size = 1;
+
+        stack.save_to_global(0);
+    }
+
+    #[test]
+    fn stack_save_to_global_unchecked_should_decrement_ptr_and_write_to_global() {
+        let mut stack = Stack::new(10);
+
+        // Simulate a global variable at index 0 on the stack
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        // Make sure that index 1 is the start of the locals, not index 0.
+        stack.first_local_idx = 1;
+        stack.end_locals_idx = 1;
+        stack.size = 1;
+
+        stack.contents[1] = MaybeUninit::new(Value::Integer(6));
+        stack.size = 2;
+
+        unsafe { stack.save_to_global_unchecked(0) };
+
+        // The stack size should be decremented, as save_to_local pops from the top of the stack
+        assert_eq!(1, stack.size);
+        // The value at the tpo of the stack should be saved to the local
+        assert_eq!(Value::Integer(6), unsafe {
+            stack.contents[0].assume_init_read()
+        })
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(
+        expected = "Attempted to `save_to_global` with an out-of-range global idx"
+    )]
+    fn stack_save_to_global_unchecked_should_dbg_assert_global_within_range() {
+        let mut stack = Stack::new(10);
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        stack.size = 1;
+
+        unsafe {
+            stack.save_to_global_unchecked(0);
         }
     }
 
@@ -688,6 +814,7 @@ impl Stack {
     /// This function will panic if:
     /// * The stack is empty.
     /// * Attempting to pop a local variable from the stack.
+    /// * The given local is not within the locals of the current stack frame.
     #[inline(always)]
     pub fn save_to_local(&mut self, idx: usize) {
         let local_idx = self.first_local_idx + idx;
@@ -700,7 +827,11 @@ impl Stack {
 
         // SAFETY: If the local is within the locals of the last call to `begin_stack_frame`, `local_idx` must be less
         // than `self.size`, and thus it is within the bounds of `contents`.
-        unsafe { self.contents.get_unchecked_mut(local_idx).write(value) };
+        unsafe {
+            let local_ref = self.contents.get_unchecked_mut(local_idx);
+            local_ref.assume_init_drop();
+            local_ref.write(value);
+        }
     }
 
     /// Pops a value from the stack, and saves it to the local with the given index.
@@ -726,6 +857,78 @@ impl Stack {
             local_ref.write(value);
         }
     }
+
+    /// Pushes the value on the stack with the given index (which starts from the bottom of the stack),
+    /// to the top of the stack.
+    /// 
+    /// # Panics
+    /// This function will panic if `idx` is not within the stack.
+    #[inline(always)]
+    pub fn push_global(&mut self, idx: usize) -> Result<(), RuntimeError> {
+        assert!(idx < self.size, "Attempted to `push_global` with an out-of-range global idx");
+
+        // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
+        let value = unsafe { self.contents.get_unchecked(idx).assume_init_ref().clone() };
+        self.push(value)
+    }
+
+    /// Pushes the value on the stack with the given index (which starts from the bottom of the stack),
+    /// to the top of the stack.
+    /// 
+    /// # Safety
+    /// The result is undefined behaviour if `idx` is not within the stack, or the stack is full.
+    #[inline(always)]
+    pub unsafe fn push_global_unchecked(&mut self, idx: usize) {
+        debug_assert!(idx < self.size, "Attempted to `push_global_unchecked` with an out-of-range global idx");
+
+        // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
+        // It is up to the caller to verify that `idx` is below `self.size`.
+        let value = unsafe { self.contents.get_unchecked(idx).assume_init_ref().clone() };
+        // SAFETY: It is up to the caller to verify that the stack is not full
+        unsafe { self.push_unchecked(value) }
+    }
+
+    /// Pops a value from the stack, and saves it to the local with the given index.
+    ///
+    /// # Panics
+    /// This function will panic if:
+    /// * The stack is empty.
+    /// * Attempting to pop a local variable from the stack.
+    /// * The given global idx is not within the bounds of the stack after popping.
+    #[inline(always)]
+    pub fn save_to_global(&mut self, idx: usize) {
+        let value = self.pop();
+
+        assert!(idx < self.size, "Attempted to `save_to_global` with an out-of-range global idx");
+
+        // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
+        unsafe {
+            let local_ref = self.contents.get_unchecked_mut(idx);
+            local_ref.assume_init_drop();
+            local_ref.write(value);
+        }
+    }
+
+    /// Pops a value from the stack, and saves it to the local with the given index.
+    ///
+    /// # Safety
+    /// The result of this function is undefined behaviour if calling [`Stack::save_to_global`] with `idx` would panic.
+    #[inline(always)]
+    pub unsafe fn save_to_global_unchecked(&mut self, idx: usize) {
+        // SAFETY: It is up to the caller to verify that the preconditions for popping are met.
+        let value = unsafe { self.pop_unchecked() };
+
+        assert!(idx < self.size, "Attempted to `save_to_global` with an out-of-range global idx");
+
+        // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
+        // It is up to the caller to verify that the index given is within the bounds of the stack after popping.
+        unsafe {
+            let local_ref = self.contents.get_unchecked_mut(idx);
+            local_ref.assume_init_drop();
+            local_ref.write(value);
+        }
+    }
+    
 
     /// Begins a stack frame with the given number of arguments and number of local variables.
     /// Returns the current stack frame, for returning to.
