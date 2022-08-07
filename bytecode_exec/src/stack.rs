@@ -263,7 +263,9 @@ mod tests {
 
     #[test]
     #[cfg(debug_assertions)]
-    #[should_panic(expected = "Attempted to `push_global_unchecked` with an out-of-range global idx")]
+    #[should_panic(
+        expected = "Attempted to `push_global_unchecked` with an out-of-range global idx"
+    )]
     fn stack_push_global_unchecked_should_panic_if_global_out_of_range() {
         let mut stack = Stack::new(10);
         unsafe { stack.push_global_unchecked(0) };
@@ -367,9 +369,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Attempted to `save_to_global` with an out-of-range global idx"
-    )]
+    #[should_panic(expected = "Attempted to `save_to_global` with an out-of-range global idx")]
     fn stack_save_to_global_should_panic_if_global_out_of_range() {
         let mut stack = Stack::new(10);
         stack.contents[0] = MaybeUninit::new(Value::Integer(5));
@@ -404,9 +404,7 @@ mod tests {
 
     #[test]
     #[cfg(debug_assertions)]
-    #[should_panic(
-        expected = "Attempted to `save_to_global` with an out-of-range global idx"
-    )]
+    #[should_panic(expected = "Attempted to `save_to_global` with an out-of-range global idx")]
     fn stack_save_to_global_unchecked_should_dbg_assert_global_within_range() {
         let mut stack = Stack::new(10);
         stack.contents[0] = MaybeUninit::new(Value::Integer(5));
@@ -860,12 +858,15 @@ impl Stack {
 
     /// Pushes the value on the stack with the given index (which starts from the bottom of the stack),
     /// to the top of the stack.
-    /// 
+    ///
     /// # Panics
     /// This function will panic if `idx` is not within the stack.
     #[inline(always)]
     pub fn push_global(&mut self, idx: usize) -> Result<(), RuntimeError> {
-        assert!(idx < self.size, "Attempted to `push_global` with an out-of-range global idx");
+        assert!(
+            idx < self.size,
+            "Attempted to `push_global` with an out-of-range global idx"
+        );
 
         // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
         let value = unsafe { self.contents.get_unchecked(idx).assume_init_ref().clone() };
@@ -874,12 +875,15 @@ impl Stack {
 
     /// Pushes the value on the stack with the given index (which starts from the bottom of the stack),
     /// to the top of the stack.
-    /// 
+    ///
     /// # Safety
     /// The result is undefined behaviour if `idx` is not within the stack, or the stack is full.
     #[inline(always)]
     pub unsafe fn push_global_unchecked(&mut self, idx: usize) {
-        debug_assert!(idx < self.size, "Attempted to `push_global_unchecked` with an out-of-range global idx");
+        debug_assert!(
+            idx < self.size,
+            "Attempted to `push_global_unchecked` with an out-of-range global idx"
+        );
 
         // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
         // It is up to the caller to verify that `idx` is below `self.size`.
@@ -899,7 +903,10 @@ impl Stack {
     pub fn save_to_global(&mut self, idx: usize) {
         let value = self.pop();
 
-        assert!(idx < self.size, "Attempted to `save_to_global` with an out-of-range global idx");
+        assert!(
+            idx < self.size,
+            "Attempted to `save_to_global` with an out-of-range global idx"
+        );
 
         // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
         unsafe {
@@ -918,7 +925,10 @@ impl Stack {
         // SAFETY: It is up to the caller to verify that the preconditions for popping are met.
         let value = unsafe { self.pop_unchecked() };
 
-        assert!(idx < self.size, "Attempted to `save_to_global` with an out-of-range global idx");
+        assert!(
+            idx < self.size,
+            "Attempted to `save_to_global` with an out-of-range global idx"
+        );
 
         // SAFETY: All values at indices below `self.size` on the stack must be initialised stack elements.
         // It is up to the caller to verify that the index given is within the bounds of the stack after popping.
@@ -928,7 +938,6 @@ impl Stack {
             local_ref.write(value);
         }
     }
-    
 
     /// Begins a stack frame with the given number of arguments and number of local variables.
     /// Returns the current stack frame, for returning to.
