@@ -2,4 +2,5 @@ bin/
 obj/
 target/
 .idea/
-Cargo.lock/
+Cargo.lock
+*.erl
