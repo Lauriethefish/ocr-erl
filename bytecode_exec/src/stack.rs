@@ -345,6 +345,44 @@ mod tests {
     }
 
     #[test]
+    fn stack_peek_save_to_local_unchecked_should_write_to_local_without_decrementing_ptr() {
+        let mut stack = Stack::new(10);
+
+        // Simulate a local variable at index 0 on the stack
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        stack.first_local_idx = 0;
+        stack.end_locals_idx = 1;
+        stack.size = 1;
+
+        stack.contents[1] = MaybeUninit::new(Value::Integer(6));
+        stack.size = 2;
+
+        unsafe { stack.peek_save_to_local_unchecked(0) };
+
+        // The stack size should be decremented, as save_to_local pops from the top of the stack
+        assert_eq!(2, stack.size);
+        // The value at the tpo of the stack should be saved to the local
+        assert_eq!(Value::Integer(6), unsafe {
+            stack.contents[0].assume_init_read()
+        })
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(
+        expected = "Attempted to write to a local outside the range of the locals within the stack frame"
+    )]
+    fn stack_peek_save_to_local_unchecked_should_dbg_assert_local_within_range() {
+        let mut stack = Stack::new(10);
+        stack.contents[0] = MaybeUninit::new(Value::Integer(5));
+        stack.size = 1;
+
+        unsafe {
+            stack.peek_save_to_local_unchecked(0);
+        }
+    }
+
+    #[test]
     fn stack_save_to_global_should_decrement_ptr_and_write_to_global() {
         let mut stack = Stack::new(10);
 
@@ -847,6 +885,30 @@ impl Stack {
 
         // SAFETY: It is up to the caller to verify that the stack is not empty.
         let value = unsafe { self.pop_unchecked() };
+
+        // SAFETY: If the local is within the locals of the last call to `begin_stack_frame` (as verified by the caller),
+        // `local_idx` must be less than `self.size`, and thus it is within the bounds of `contents`.
+        unsafe {
+            let local_ref = self.contents.get_unchecked_mut(local_idx);
+            local_ref.assume_init_drop();
+            local_ref.write(value);
+        }
+    }
+
+    /// Clones the top value on the stack, and writes it to the local with the given index.
+    ///
+    /// # Safety
+    /// The result is undefined behaviour if the stack is empty.
+    #[inline(always)]
+    pub unsafe fn peek_save_to_local_unchecked(&mut self, idx: usize) {
+        let local_idx = self.first_local_idx + idx;
+        debug_assert!(
+            local_idx < self.end_locals_idx,
+            "Attempted to write to a local outside the range of the locals within the stack frame"
+        );
+
+        // SAFETY: It is up to the caller to verify that the stack is not empty.
+        let value = unsafe { self.peek_unchecked() };
 
         // SAFETY: If the local is within the locals of the last call to `begin_stack_frame` (as verified by the caller),
         // `local_idx` must be less than `self.size`, and thus it is within the bounds of `contents`.

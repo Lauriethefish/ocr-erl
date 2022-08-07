@@ -538,6 +538,10 @@ fn execute_idx(
                 stack.push_global_unchecked(*global_idx)
             },
             Instruction::Save(local_idx) => unsafe { stack.save_to_local_unchecked(*local_idx) },
+            Instruction::PeekSave(local_idx) => unsafe {
+                stack.peek_save_to_local_unchecked(*local_idx)
+            },
+
             Instruction::SaveGlobal(global_idx) => unsafe {
                 stack.save_to_global_unchecked(*global_idx)
             },

@@ -43,11 +43,11 @@ impl Debug for NativeSubProgramPtr {
 /// `GreaterThanOrEquals`, `LessThan`, `LessThanOrEquals`, `Equals` and `NotEquals`, at least two values will be pushed
 /// to stack by preceeding instructions.
 /// - For [Instruction]s `Not`, `JumpIfTrue`, `JumpIfFalse`, `JumpIfFalsePopIfTrue`, `JumpIfTruePopIfFalse`,
-///  `Save`, `SaveGlobal`, `Pop`, and `ReturnValue`, at least one value will be pushed to stack by preceeding instructions.
+///  `Save`, `PeekSave`, `SaveGlobal`, `Pop`, and `ReturnValue`, at least one value will be pushed to stack by preceeding instructions.
 /// - For [`Instruction::Call`], the given sub-program index will return a valid sub-program when passed to [`Module::sub_program`]. It is also
 /// guaranteed that at least [`SubProgram::arg_count`] values will be pushed to the stack by preceeding instructions.
 /// - For [`Instruction::CallNative`], at least [`NativeCallInfo::arg_count`] values will be pushed to the stack by preceeding instructions.
-/// - For [`Instruction::Load`] and [`Instruction::Save`], the given local index must be less than the [`SubProgram::local_count`] within the
+/// - For [`Instruction::Load`], [`Instruction::Save`] and [`Instruction::PeekSave`] the given local index must be less than the [`SubProgram::local_count`] within the
 /// sub-program when there instruction is invoked.
 /// - For [`Instruction::LoadGlobal`] and [`Instruction::SaveGlobal`], the given global index must be less than the [`SubProgram::local_count`]
 /// within the main procedure.
@@ -219,6 +219,15 @@ impl Module {
                         "Local save out of range of `local_count` within the sub-program"
                     );
                     Self::diff(&mut size, -1); // Make sure that enough stack space is available
+                }
+                Instruction::PeekSave(local_idx) => {
+                    // Verify that the local_idx is within bounds
+                    assert!(
+                        *local_idx < sub_program.local_count,
+                        "Local save out of range of `local_count` within the sub-program"
+                    );
+                    Self::diff(&mut size, -1); // Make sure that enough stack space is available
+                    Self::diff(&mut size, 1); // The value isn't actually popped from stack.
                 }
                 Instruction::SaveGlobal(global_idx) => {
                     // Verify that the global_idx is within bounds
@@ -463,6 +472,8 @@ pub(crate) enum Instruction {
     LoadGlobal(usize),
     /// Pops and writes the value on the top of stack to the local with the given index.
     Save(usize),
+    /// Clones the value on the top of the stack and writes it to the local with the given index.
+    PeekSave(usize),
     /// Pops and writes the value on the top of stack to the global with the given index.
     /// It is important to note that globals in this interpreter are just locals of the main sub-program in [Module].
     /// Thus, in the main function, this instruction is identical to `Save(u16)`.
@@ -517,6 +528,7 @@ impl Debug for Instruction {
                 f.write_fmt(format_args!("LGL, idx: {global_idx}"))
             }
             Instruction::Save(local_idx) => f.write_fmt(format_args!("SLC, idx: {local_idx}")),
+            Instruction::PeekSave(local_idx) => f.write_fmt(format_args!("PSL, idx: {local_idx}")),
             Instruction::SaveGlobal(global_idx) => {
                 f.write_fmt(format_args!("SGL, idx: {global_idx}"))
             }

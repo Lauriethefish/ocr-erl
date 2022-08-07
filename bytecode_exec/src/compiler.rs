@@ -235,15 +235,15 @@ mod tests {
         let mut ctx = Context::new(None, &sub_programs, vec![], true);
 
         // Emit two saves to variables with the same name
-        ctx.save("example".to_string(), false, false, false)
+        ctx.save("example".to_string(), false, false, false, false)
             .unwrap();
-        ctx.save("example".to_string(), false, false, false)
+        ctx.save("example".to_string(), false, false, false, true)
             .unwrap();
 
         // Both instructions should save to 0, since we passed the same variable name
         assert_eq!(
             ctx.instructions,
-            vec![Instruction::Save(0), Instruction::Save(0)]
+            vec![Instruction::Save(0), Instruction::PeekSave(0)]
         );
     }
 
@@ -262,7 +262,8 @@ mod tests {
         );
 
         let mut ctx = Context::new(Some(global_ctx), &sub_programs, vec![], true);
-        ctx.save("example".to_string(), true, false, false).unwrap();
+        ctx.save("example".to_string(), true, false, false, false)
+            .unwrap();
 
         // A `SaveGlobal` instruction should be used for globals
         assert_eq!(ctx.instructions, vec![Instruction::SaveGlobal(5)]);
@@ -276,7 +277,7 @@ mod tests {
         // For now statements such as `global i = 2` in the global scope are currently not allowed
         // TODO: Should these be allowed in the future?
         assert_eq!(
-            global_ctx.save("example".to_string(), true, false, false),
+            global_ctx.save("example".to_string(), true, false, false, false),
             Err(RuntimeError::CannotUseGlobalKeywordInGlobalScope)
         );
     }
@@ -529,6 +530,7 @@ impl<'a> Context<'a> {
         is_global: bool,
         is_const: bool,
         is_array: bool,
+        peek: bool,
     ) -> Result<()> {
         if is_global {
             let assignable = match &mut self.global_function_context {
@@ -539,7 +541,11 @@ impl<'a> Context<'a> {
             self.emit(Instruction::SaveGlobal(assignable));
         } else {
             let assignable = self.get_assignable_idx(variable_name, is_const, is_array)?;
-            self.emit(Instruction::Save(assignable));
+            if peek {
+                self.emit(Instruction::PeekSave(assignable));
+            } else {
+                self.emit(Instruction::Save(assignable));
+            }
         }
 
         Ok(())
@@ -604,28 +610,29 @@ impl<'a> Context<'a> {
         variable_name: String,
         block: Vec<Statement>,
     ) -> Result<()> {
-        self.emit_expression(start)?;
-        self.save(variable_name.clone(), false, false, false)?;
-
         let step_expr = match step {
             Some(expr) => expr,
             None => Expression::IntegerLiteral(1),
         };
+        self.get_assignable_idx(variable_name.clone(), false, false)?;
 
+        self.emit_expression(start)?;
         let insert_jump_to_condition_idx = self.emit(Instruction::Nop);
+
+        self.emit(Instruction::Pop);
         let start_of_block_idx = self.next_instruction_idx();
         self.emit_full_block(block);
 
         self.load(variable_name.clone())?;
         self.emit_expression(step_expr)?;
         self.emit(Instruction::Add);
-        self.save(variable_name.clone(), false, false, false)?;
 
         self.replace(
             insert_jump_to_condition_idx,
             Instruction::Jump(self.next_instruction_idx()),
         );
-        self.load(variable_name)?;
+        self.save(variable_name, false, false, false, true)?;
+
         self.emit_expression(end)?;
         self.emit(Instruction::LessThanOrEquals);
         self.emit(Instruction::JumpIfTrue(start_of_block_idx));
@@ -677,7 +684,7 @@ impl<'a> Context<'a> {
                 indices: _,
             } => todo!(), // TODO: Need an instruction for indexing arrays
             Assignable::Property { value: _, name: _ } => todo!(), // TODO: Need an instruction for getting properties
-            Assignable::Variable(name) => self.save(name, is_global, is_const, is_array),
+            Assignable::Variable(name) => self.save(name, is_global, is_const, is_array, false),
         }
     }
 
