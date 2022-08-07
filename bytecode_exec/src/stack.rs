@@ -688,7 +688,8 @@ impl Stack {
         }
     }
 
-    /// Removes the value at the top of the stack and returns it.
+    /// Removes the two values at the top of the stack and returns them.
+    /// The higher value in the stack is returned first.
     ///
     /// # Safety
     /// If calling [`Stack::pop`] twice would panic, calling this function is undefined bebaviour.
