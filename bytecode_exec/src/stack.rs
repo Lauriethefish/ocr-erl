@@ -102,6 +102,43 @@ mod tests {
     }
 
     #[test]
+    fn stack_peek_should_return_top_value_without_decrementing_ptr() {
+        let mut stack = Stack::new(10);
+        stack.push(Value::Integer(5)).unwrap();
+
+        let value = stack.peek();
+        assert_eq!(1, stack.size);
+        assert_eq!(Value::Integer(5), value);
+    }
+
+    #[test]
+    #[should_panic(expected = "Attempted to `peek` with empty stack")]
+    fn stack_peek_should_panic_if_stack_empty() {
+        let stack = Stack::new(10);
+
+        stack.peek();
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Attempted to `peek_unchecked` with empty stack")]
+    fn stack_peek_unchecked_should_dbg_assert_stack_not_empty() {
+        let stack = Stack::new(10);
+
+        unsafe { stack.peek_unchecked() };
+    }
+
+    #[test]
+    fn stack_peek_unchecked_should_return_top_value_without_decrementing_ptr() {
+        let mut stack = Stack::new(10);
+        stack.push(Value::Integer(5)).unwrap();
+
+        let value = unsafe { stack.peek_unchecked() };
+        assert_eq!(1, stack.size);
+        assert_eq!(Value::Integer(5), value);
+    }
+
+    #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Called `pop_unchecked` with empty stack")]
     fn stack_pop_unchecked_should_dbg_assert_stack_not_empty() {
@@ -551,6 +588,45 @@ impl Stack {
             },
             unsafe { self.contents.get_unchecked(self.size).assume_init_read() },
         )
+    }
+
+    /// Returns a clone of the value on the top of the stack.
+    ///
+    /// # Panics
+    /// This function will panic if the stack is empty.
+    #[inline(always)]
+    pub fn peek(&self) -> Value {
+        assert!(self.size > 0, "Attempted to `peek` with empty stack");
+
+        // SAFETY: The value at `self.size - 1` must always be initialised and within the bounds of
+        // the stack if `self.size` is greater than 0.
+        unsafe {
+            self.contents
+                .get_unchecked(self.size - 1)
+                .assume_init_ref()
+                .clone()
+        }
+    }
+
+    /// Returns a clone of the value on the top of the stack.
+    ///
+    /// # Safety
+    /// The result is undefined behaviour if the stack is empty.
+    #[inline(always)]
+    pub unsafe fn peek_unchecked(&self) -> Value {
+        debug_assert!(
+            self.size > 0,
+            "Attempted to `peek_unchecked` with empty stack"
+        );
+
+        // SAFETY: The value at `self.size - 1` must always be initialised and within the bounds of
+        // the stack if `self.size` is greater than 0. (as verified by the caller)
+        unsafe {
+            self.contents
+                .get_unchecked(self.size - 1)
+                .assume_init_ref()
+                .clone()
+        }
     }
 
     /// Pushes the value of a local variable within the current stack frame.
