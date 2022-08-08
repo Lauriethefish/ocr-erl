@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use crate::{err::RuntimeError, stdlib::Value};
+use crate::{err::RuntimeError, Value};
 
 #[cfg(test)]
 mod tests {

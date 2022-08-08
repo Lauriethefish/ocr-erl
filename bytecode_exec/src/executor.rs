@@ -8,7 +8,7 @@ use crate::{
     err::RuntimeError,
     rcstr::RcStr,
     stack::{Stack, StackFrame},
-    stdlib::{Type, Value},
+    Type, Value,
 };
 
 /// Stores the currently executing instruction of a sub-program

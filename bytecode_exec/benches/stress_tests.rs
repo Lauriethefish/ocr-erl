@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use erl_bytecode_exec::executor;
-use erl_bytecode_exec::stdlib::Value;
+use erl_bytecode_exec::Value;
 
 macro_rules! exec_bench {
     ($bench_name:ident,

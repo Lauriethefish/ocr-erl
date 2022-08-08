@@ -7,7 +7,7 @@ use std::fmt::Display;
 
 use erl_parser::ast::{BinaryOperator, UnaryOperator};
 
-use crate::stdlib::{Type, Value};
+use crate::{Type, Value};
 
 /// An error that can occur while executing an ERL program.
 #[derive(Clone, Debug, PartialEq)]
@@ -91,5 +91,11 @@ impl Display for RuntimeError {
 impl From<std::io::Error> for RuntimeError {
     fn from(err: std::io::Error) -> Self {
         Self::IOError(err.to_string())
+    }
+}
+
+impl From<std::convert::Infallible> for RuntimeError {
+    fn from(_: std::convert::Infallible) -> Self {
+        unreachable!()
     }
 }
