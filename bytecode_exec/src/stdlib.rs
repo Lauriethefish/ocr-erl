@@ -43,7 +43,7 @@ impl Io for StandardIo {
 
         stdin.read_line(&mut result)?;
         // Remove the LF or CRLF
-        if result.pop() == Some('\r') {
+        if result.pop() == Some('\n') {
             result.pop();
         }
         Ok(result)
