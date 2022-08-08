@@ -15,7 +15,6 @@ use crate::{
     bytecode::{Instruction, NativeCallInfo, SubProgram},
     err::RuntimeError,
     rcstr::RcStr,
-    stdlib,
 };
 
 use erl_parser::ast::{
@@ -370,16 +369,13 @@ struct Context<'a> {
 }
 
 #[derive(Clone)]
-enum SubProgramType {
-    Bytecode(usize),
+enum SubProgramCallInfo {
+    Bytecode {
+        idx: usize,
+        arg_count: usize,
+        is_function: bool,
+    },
     Native(Rc<NativeCallInfo>),
-}
-
-#[derive(Clone)]
-struct SubProgramCallInfo {
-    r#type: SubProgramType,
-    arg_count: usize,
-    is_function: bool,
 }
 
 /// Result type for emitting code.
@@ -703,17 +699,30 @@ impl<'a> Context<'a> {
             None => return Err(RuntimeError::NoSuchSubProgram(name)),
         };
 
+        let (arg_count, is_function, call_instruction) = match call_info {
+            SubProgramCallInfo::Bytecode {
+                idx,
+                arg_count,
+                is_function,
+            } => (*arg_count, *is_function, Instruction::Call(*idx)),
+            SubProgramCallInfo::Native(call_info) => (
+                call_info.arg_count(),
+                call_info.is_function(),
+                Instruction::CallNative(call_info.clone()),
+            ),
+        };
+
         // If the return value of this sub-program needs to be used in an expression, then we will return Err for procedures
         // (as they return no value)
-        if using_return_value && !call_info.is_function {
+        if using_return_value && !is_function {
             return Err(RuntimeError::CannotUseProcedureInExpression(name));
         }
 
         // Make sure that the right number is arguments is being passed
-        if call_info.arg_count != call.args.len() {
+        if arg_count != call.args.len() {
             return Err(RuntimeError::WrongNumberOfArguments {
                 name,
-                expected: call_info.arg_count,
+                expected: arg_count,
                 actual: call.args.len(),
             });
         }
@@ -723,13 +732,10 @@ impl<'a> Context<'a> {
             self.emit_expression(arg)?;
         }
 
-        self.emit(match call_info.r#type.clone() {
-            SubProgramType::Bytecode(idx) => Instruction::Call(idx),
-            SubProgramType::Native(ptr) => Instruction::CallNative(ptr),
-        });
+        self.emit(call_instruction);
 
         // If we do not need the return value of this function (e.g. in a statement), then we should pop it off of the stack
-        if !using_return_value && call_info.is_function {
+        if !using_return_value && is_function {
             self.emit(Instruction::Pop);
         }
 
@@ -875,78 +881,104 @@ impl<'a> Context<'a> {
     }
 }
 
-/// Compiles the given AST into the ERL bytecode
-pub fn compile(program: Vec<RootStatement>) -> Module {
-    let sub_programs_by_name = RefCell::new(HashMap::new());
+/// The compiler that turns the ERL ast into ERL bytecode.
+pub struct Compiler {
+    sub_programs: RefCell<HashMap<String, SubProgramCallInfo>>,
+    ast: Vec<RootStatement>,
+}
 
-    for (name, sub_program) in stdlib::create_stdlib() {
-        sub_programs_by_name.borrow_mut().insert(
-            name.to_string(),
-            SubProgramCallInfo {
-                arg_count: sub_program.arg_count(),
-                is_function: sub_program.is_function(),
-                r#type: SubProgramType::Native(sub_program),
-            },
-        );
-    }
-
-    let mut sub_programs: Vec<SubProgram> = Vec::new();
-    let mut global_ctx = Context::new(None, &sub_programs_by_name, Vec::new(), false);
-
-    for statement in program {
-        match statement {
-            RootStatement::Statement(statement) => {
-                match global_ctx.emit_next_statement(statement) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        global_ctx.emit_throw(err);
-                        break;
-                    }
-                }
-            }
-            RootStatement::SubProgram {
-                name,
-                block,
-                argument_names,
-                is_function,
-            } => {
-                // To allow recursion, we will first construct the `SubProgramCallInfo` for this sub-program.
-                let idx = sub_programs.len();
-                let call_info = SubProgramCallInfo {
-                    r#type: SubProgramType::Bytecode(idx),
-                    arg_count: argument_names.len(),
-                    is_function,
-                };
-
-                // ...and insert it into the map of available sub-programs before compiling
-                let mut sub_program_map = sub_programs_by_name.borrow_mut();
-                if sub_program_map.contains_key(&name) {
-                    global_ctx.emit_throw(RuntimeError::DuplicateSubProgramName(name));
-                    break;
-                }
-                sub_program_map.insert(name.clone(), call_info);
-                drop(sub_program_map); // Drop the borrow to allow the sub-programs map to be accessed by the compiler.
-
-                let mut ctx = Context::new(
-                    Some(global_ctx),
-                    &sub_programs_by_name,
-                    argument_names,
-                    is_function,
-                );
-                ctx.emit_full_block(block);
-                global_ctx = *ctx
-                    .global_function_context
-                    .take()
-                    .expect("Global context must exist as it was passed in above");
-                let mut sub_program = ctx.finish();
-
-                sub_program.name = Some(name.clone());
-                sub_programs.push(sub_program);
-            }
+impl Compiler {
+    /// Creates a compiler that will compile the given AST.
+    pub fn with_ast(ast: Vec<RootStatement>) -> Self {
+        Self {
+            sub_programs: RefCell::new(HashMap::new()),
+            ast,
         }
     }
-    sub_programs.push(global_ctx.finish());
 
-    let main_idx = sub_programs.len() - 1;
-    Module::new(sub_programs, main_idx)
+    /// Makes the given native sub-program available to be called.
+    pub fn with_sub_program(self, call: (String, Rc<NativeCallInfo>)) -> Self {
+        let (name, call_info) = call;
+
+        self.sub_programs
+            .borrow_mut()
+            .insert(name, SubProgramCallInfo::Native(call_info));
+        self
+    }
+
+    /// Makes the given native sub-programs available to be called.
+    pub fn with_sub_programs(mut self, programs: Vec<(String, Rc<NativeCallInfo>)>) -> Self {
+        for program in programs {
+            self = self.with_sub_program(program)
+        }
+        self
+    }
+
+    /// Compiles the provided code into a [Module], which can be reused
+    /// multiple times for execution.
+    pub fn build(self) -> Module {
+        let mut sub_programs: Vec<SubProgram> = Vec::new();
+        let mut global_ctx = Context::new(None, &self.sub_programs, Vec::new(), false);
+
+        for statement in self.ast {
+            match statement {
+                // If this RootStatement is a statement within the main procedure, emit it into the global context
+                RootStatement::Statement(statement) => {
+                    match global_ctx.emit_next_statement(statement) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            global_ctx.emit_throw(err);
+                            break;
+                        }
+                    }
+                }
+                RootStatement::SubProgram {
+                    name,
+                    block,
+                    argument_names,
+                    is_function,
+                } => {
+                    // To allow recursion, we will first construct the `SubProgramCallInfo` for this sub-program.
+                    let next_idx = sub_programs.len();
+                    let call_info = SubProgramCallInfo::Bytecode {
+                        idx: next_idx,
+                        arg_count: argument_names.len(),
+                        is_function,
+                    };
+
+                    // ...and insert it into the map of available sub-programs before compiling
+                    let mut sub_program_map = self.sub_programs.borrow_mut();
+                    if sub_program_map.contains_key(&name) {
+                        global_ctx.emit_throw(RuntimeError::DuplicateSubProgramName(name));
+                        break;
+                    }
+                    sub_program_map.insert(name.clone(), call_info);
+                    drop(sub_program_map); // Drop the borrow to allow the sub-programs map to be accessed by the compiler.
+
+                    let mut ctx = Context::new(
+                        Some(global_ctx),
+                        &self.sub_programs,
+                        argument_names,
+                        is_function,
+                    );
+
+                    // Emit the instructions for the sub-program
+                    ctx.emit_full_block(block);
+                    // Retrieve the global context
+                    global_ctx = *ctx
+                        .global_function_context
+                        .take()
+                        .expect("Global context must exist as it was passed in above");
+                    let mut sub_program = ctx.finish();
+
+                    sub_program.name = Some(name.clone());
+                    sub_programs.push(sub_program);
+                }
+            }
+        }
+        sub_programs.push(global_ctx.finish());
+
+        let main_idx = sub_programs.len() - 1;
+        Module::new(sub_programs, main_idx)
+    }
 }

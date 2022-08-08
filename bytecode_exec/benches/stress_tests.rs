@@ -11,7 +11,10 @@ macro_rules! exec_bench {
      expected_result: $expected:expr) => {
         fn $bench_name(c: &mut Criterion) {
             let ast = erl_parser::parse_from_string($code).unwrap();
-            let module = erl_bytecode_exec::compiler::compile(ast);
+            let module = erl_bytecode_exec::Compiler::with_ast(ast)
+                .with_sub_programs(erl_bytecode_exec::stdlib::with_default_io())
+                .build();
+
             let routine = || executor::execute_by_name(&module, $func, black_box($args));
             assert_eq!($expected, routine().unwrap());
 

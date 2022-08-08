@@ -8,25 +8,38 @@ use crate::err::RuntimeError;
 use crate::rcstr::RcStr;
 use crate::{expose, Type, Value};
 
-use std::io::Write;
+use std::cell::RefCell;
+use std::io::{BufRead, Write};
 use std::rc::Rc;
 
+/// Returns the standard library functions, using stdin and stdout for input/print.
+pub fn with_default_io() -> Vec<(String, Rc<NativeCallInfo>)> {
+    with_io(std::io::stdout(), std::io::stdin().lock())
+}
+
+/// Returns the standard library functions, using the given streams for input/print.
 #[rustfmt::skip]
-pub fn create_stdlib() -> Vec<(String, Rc<NativeCallInfo>)> { vec![
+pub fn with_io(stdout: impl Write + 'static, stdin: impl BufRead + 'static) -> Vec<(String, Rc<NativeCallInfo>)> { 
+    let stdout_print = Rc::new(RefCell::new(stdout));
+    let stdout_input = stdout_print.clone();
+    let stdin_input = Rc::new(RefCell::new(stdin));
+
+vec![
 
 expose! {
-    fn print(value: Value) {
-        println!("{}", value);
+    fn print(value: Value) -> Result<(), RuntimeError> {
+        writeln!(stdout_print.borrow_mut(), "{value}")?;
+        Ok(())
     }
 },
 expose! {
     fn input(prompt: Value) -> Result<Value, RuntimeError> {
-        print!("{}", prompt);
-        std::io::stdout().flush()?;
+        writeln!(stdout_input.borrow_mut(), "{prompt}")?;
+        stdout_input.borrow_mut().flush()?;
 
         let mut text = String::new();
 
-        std::io::stdin().read_line(&mut text)?;
+        stdin_input.borrow_mut().read_line(&mut text)?;
         Ok(Value::String(RcStr::new(&text)))
     }
 },

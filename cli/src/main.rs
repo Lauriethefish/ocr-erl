@@ -39,7 +39,9 @@ fn main() {
         }
     };
 
-    let module = erl_bytecode_exec::compiler::compile(ast);
+    let module = erl_bytecode_exec::Compiler::with_ast(ast)
+        .with_sub_programs(erl_bytecode_exec::stdlib::with_default_io())
+        .build();
     if args.contains(&String::from("--emit-bytecode")) {
         println!("{module:#?}");
         println!("Now executing:");

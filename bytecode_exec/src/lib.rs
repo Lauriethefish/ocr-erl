@@ -11,7 +11,6 @@
 
 use std::fmt::Display;
 
-use erl_parser::ast::RootStatement;
 use err::RuntimeError;
 use rcstr::RcStr;
 
@@ -22,6 +21,8 @@ pub mod executor;
 pub mod rcstr;
 pub mod stack;
 pub mod stdlib;
+
+pub use compiler::Compiler;
 
 #[cfg(test)]
 mod tests {
@@ -210,8 +211,7 @@ macro_rules! expose {
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
                 false,
-                Box::new(|stack| {
-                    use $crate::stdlib::ConvertArg;
+                Box::new(move |stack| {
                     $crate::args!(stack $(,$next_arg:$next_type)*);
                     let result: Result<(), $crate::err::RuntimeError> = { $block };
 
@@ -229,7 +229,7 @@ macro_rules! expose {
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
                 false,
-                Box::new(|stack| {
+                Box::new(move |stack| {
                     $crate::args!(stack $(,$next_arg:$next_type)*);
                     let result: Result<$crate::stdlib::Value, $crate::err::RuntimeError> = { $block };
                     stack.push_unchecked(result?);
@@ -249,7 +249,7 @@ macro_rules! expose {
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
                 false,
-                Box::new(|stack| {
+                Box::new(move |stack| {
                     $crate::args!(stack $(,$next_arg:$next_type)*);
                     let result: $crate::stdlib::Value = { $block };
                     stack.push_unchecked(result);
@@ -269,7 +269,7 @@ macro_rules! expose {
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
                 false,
-                Box::new(|stack| {
+                Box::new(move |stack| {
                     $crate::args!(stack $(,$next_arg:$next_type)*);
                     let _result: () = { $block };
 
@@ -278,10 +278,4 @@ macro_rules! expose {
             ) }
         )
     };
-}
-
-/// Compiles the given AST into an ERL module and executes it.
-pub fn compile_and_execute(ast: Vec<RootStatement>) -> Result<(), RuntimeError> {
-    let module = compiler::compile(ast);
-    executor::execute_main(&module)
 }
