@@ -331,6 +331,7 @@ impl Debug for SubProgram {
             .field("arg_count", &self.arg_count)
             .field("instructions", &InstructionsFormatter { sub_program: self })
             .field("is_function", &self.is_function)
+            .field("max_stack_space", &self.max_stack_space)
             .finish()
     }
 }
