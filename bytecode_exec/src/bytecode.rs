@@ -1,6 +1,6 @@
 //! The bytecode format used by the VM.
 
-use std::fmt::Debug;
+use std::{fmt::Debug, rc::Rc};
 
 use crate::{err::RuntimeError, rcstr::RcStr, stack::Stack};
 
@@ -14,23 +14,6 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn instruction_size_should_be_sixteen_bytes_or_less() {
         assert!(std::mem::size_of::<Instruction>() <= 16)
-    }
-}
-
-/// A native-sub program pointer.
-#[repr(transparent)]
-#[derive(Copy, Clone)]
-pub(crate) struct NativeSubProgramPtr(pub fn(&mut Stack) -> Result<(), RuntimeError>);
-
-impl PartialEq for NativeSubProgramPtr {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 as usize == other.0 as usize
-    }
-}
-
-impl Debug for NativeSubProgramPtr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("<native function ptr>")
     }
 }
 
@@ -352,22 +335,69 @@ impl Debug for SubProgram {
     }
 }
 
-/// Information required to call a native sub-program.
-#[derive(Copy, Clone)]
-pub(crate) struct NativeCallInfo {
+type NativeSubProgram = Box<dyn Fn(&mut Stack) -> Result<(), RuntimeError>>;
+
+/// The information required for the compiler/executor to process a native sub-program.
+pub struct NativeCallInfo {
     /// The number of arguments in the native sub-program.
-    pub(crate) arg_count: usize,
+    arg_count: usize,
     /// Whether the sub-program is a function (returns a value).
-    pub(crate) is_function: bool,
-    /// The pointer to call the sub-program. (the sub-program itself manages properly popping arguments from the stack).
-    pub(crate) ptr: NativeSubProgramPtr,
+    is_function: bool,
+    /// The pointer to call the sub-program. (the sub-program itself manages properly popping arguments from the stack and pushing the result).
+    ptr: NativeSubProgram,
+}
+
+impl NativeCallInfo {
+    /// Creates a new [NativeCallInfo].
+    ///
+    /// # Safety
+    /// The given `ptr` must be a [NativeSubProgram] that (if returning `Ok`)
+    /// pops exactly `arg_count` values from the stack. If `is_function` is `true`, then the
+    /// function must also push exactly one return value to stack.
+    ///
+    /// If the sub-program does not do this, using this [NativeCallInfo] may lead to undefined behaviour.
+    ///
+    /// NOTE: This function is not intended to be used directl. Consider using the `expose!` macro.
+    pub unsafe fn new(arg_count: usize, is_function: bool, ptr: NativeSubProgram) -> Rc<Self> {
+        Rc::new(NativeCallInfo {
+            arg_count,
+            is_function,
+            ptr,
+        })
+    }
+
+    /// Calls the native sub-program.
+    /// This will pop [`NativeCallInfo::arg_count`] values from the stack, and if [`NativeCallInfo::is_function`]
+    /// is true, one return value will be pushed to stack
+    ///
+    /// # Safety
+    /// At least [`NativeCallInfo::arg_count`] values must be pushed to stack before this call,
+    /// otherwise the result is undefined behaviour. Additionally, if [`NativeCallInfo::arg_count`] is 0,
+    /// and [`NativeCallInfo::is_function`] is `true`, the stack must NOT be full.
+    #[inline(always)]
+    pub(crate) unsafe fn call(&self, stack: &mut Stack) -> Result<(), RuntimeError> {
+        (self.ptr)(stack)
+    }
+
+    /// Gets the number of arguments of the native sub-program
+    #[inline(always)]
+    pub(crate) fn arg_count(&self) -> usize {
+        self.arg_count
+    }
+
+    /// Gets whether or not the native sub-program is a function (returns a value)
+    #[inline(always)]
+    pub(crate) fn is_function(&self) -> bool {
+        self.is_function
+    }
 }
 
 impl PartialEq for NativeCallInfo {
     fn eq(&self, other: &Self) -> bool {
-        self.arg_count == other.arg_count
-            && self.is_function == other.is_function
-            && self.ptr == other.ptr
+        // TODO: This PartialEq implementation is not ideal, and is only intended for use in tests.
+        // Use #[cfg(test)] here?
+        self.arg_count == other.arg_count && self.is_function == other.is_function
+        /* && self.ptr == other.ptr */
     }
 }
 
@@ -448,7 +478,7 @@ pub(crate) enum Instruction {
     /// The arguments for the call must be pushed to the stack.
     /// When this instruction completes, the arguments will be popped off of the stack.
     /// If calling a function, the return value will be pushed to the stack.
-    CallNative(&'static NativeCallInfo),
+    CallNative(Rc<NativeCallInfo>),
     /// Returns from the current function with no return value.
     Return,
     /// Returns the value at the top of stack from the current function.
@@ -553,4 +583,89 @@ impl Debug for InstructionsFormatter<'_> {
 
         Ok(())
     }
+}
+
+#[macro_export]
+macro_rules! args {
+    ($stack:ident, $arg:ident:$type:ty $(, $next_arg:ident:$next_type:ty)*) => {
+        let $arg = ConvertArg::<$type>::try_into($stack.pop())?;
+        $crate::args!($stack $(,$next_arg:$next_type)*);
+    };
+    ($stack:ident) => ()
+}
+
+#[macro_export]
+macro_rules! count_args {
+    ($arg:ident:$type:ty $(,$next_arg:ident:$next_type:ty)*) => {
+        1usize + $crate::count_args!($($next_arg:$next_type),*)
+    };
+    () => (0usize)
+}
+
+/// Macro for wrapping native sub-programs to be called by the interpreter.
+#[macro_export]
+macro_rules! expose {
+    (fn $name:ident($($next_arg:ident:$next_type:ty),*) -> Result<(), RuntimeError> $block:block) => {
+        (
+            stringify!($name).to_string(),
+            unsafe { $crate::bytecode::NativeCallInfo::new(
+                $crate::count_args!($($next_arg:$next_type),*),
+                false,
+                Box::new(|stack| {
+                    use $crate::stdlib::ConvertArg;
+                    $crate::args!(stack $(,$next_arg:$next_type)*);
+                    let result: Result<(), $crate::err::RuntimeError> = { $block };
+
+                    result
+                })
+            ) }
+        )
+    };
+    (fn $name:ident($($next_arg:ident:$next_type:ty),*) -> Result<Value, RuntimeError> $block:block) => {
+        (
+            stringify!($name).to_string(),
+            unsafe { $crate::bytecode::NativeCallInfo::new(
+                $crate::count_args!($($next_arg:$next_type),*),
+                false,
+                Box::new(|stack| {
+                    $crate::args!(stack $(,$next_arg:$next_type)*);
+                    let result: Result<$crate::stdlib::Value, $crate::err::RuntimeError> = { $block };
+                    stack.push_unchecked(result?);
+
+                    Ok(())
+                })
+            ) }
+        )
+    };
+    (fn $name:ident($($next_arg:ident:$next_type:ty),*) -> Value $block:block) => {
+        (
+            stringify!($name).to_string(),
+            unsafe { $crate::bytecode::NativeCallInfo::new(
+                $crate::count_args!($($next_arg:$next_type),*),
+                false,
+                Box::new(|stack| {
+                    $crate::args!(stack $(,$next_arg:$next_type)*);
+                    let result: $crate::stdlib::Value = { $block };
+                    stack.push_unchecked(result);
+
+                    Ok(())
+                })
+            ) }
+        )
+    };
+    (fn $name:ident($($next_arg:ident:$next_type:ty),*) $block:block) => {
+        (
+            stringify!($name).to_string(),
+            unsafe { $crate::bytecode::NativeCallInfo::new(
+                $crate::count_args!($($next_arg:$next_type),*),
+                false,
+                Box::new(|stack| {
+                    $crate::args!(stack $(,$next_arg:$next_type)*);
+                    let _result: () = { $block };
+
+                    Ok(())
+                })
+            ) }
+        )
+    };
 }

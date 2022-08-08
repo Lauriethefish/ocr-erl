@@ -550,7 +550,7 @@ fn execute_idx(
             }
             Instruction::Throw(err) => return Err((**err).clone()),
             Instruction::Nop => {}
-            Instruction::CallNative(call_info) => (call_info.ptr.0)(&mut stack)?,
+            Instruction::CallNative(call_info) => unsafe { call_info.call(&mut stack)? },
         };
 
         // Advance to the next instruction

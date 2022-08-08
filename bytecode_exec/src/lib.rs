@@ -17,7 +17,7 @@ pub mod compiler;
 pub mod err;
 pub mod executor;
 pub mod rcstr;
-mod stack;
+pub mod stack;
 pub mod stdlib;
 
 /// Compiles the given AST into an ERL module and executes it.

@@ -612,7 +612,7 @@ pub struct StackFrame {
     end_locals_idx: usize,
 }
 
-pub(crate) struct Stack {
+pub struct Stack {
     /// The values within the stack.
     contents: Box<[MaybeUninit<Value>]>,
     /// The stack index of the first value that is NOT part of the stack.

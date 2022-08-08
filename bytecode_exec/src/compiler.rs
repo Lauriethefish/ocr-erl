@@ -8,7 +8,7 @@
 //! since, while this is a compiler, the executor is an interpreter, so we should display errors
 //! only if they are actually reached.
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     bytecode::Module,
@@ -369,13 +369,13 @@ struct Context<'a> {
     is_function: bool,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 enum SubProgramType {
     Bytecode(usize),
-    Native(&'static NativeCallInfo),
+    Native(Rc<NativeCallInfo>),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct SubProgramCallInfo {
     r#type: SubProgramType,
     arg_count: usize,
@@ -723,7 +723,7 @@ impl<'a> Context<'a> {
             self.emit_expression(arg)?;
         }
 
-        self.emit(match call_info.r#type {
+        self.emit(match call_info.r#type.clone() {
             SubProgramType::Bytecode(idx) => Instruction::Call(idx),
             SubProgramType::Native(ptr) => Instruction::CallNative(ptr),
         });
@@ -879,13 +879,13 @@ impl<'a> Context<'a> {
 pub fn compile(program: Vec<RootStatement>) -> Module {
     let sub_programs_by_name = RefCell::new(HashMap::new());
 
-    for (name, sub_program) in stdlib::BUILT_IN_SUB_PROGRAMS.into_iter() {
+    for (name, sub_program) in stdlib::create_stdlib() {
         sub_programs_by_name.borrow_mut().insert(
             name.to_string(),
             SubProgramCallInfo {
+                arg_count: sub_program.arg_count(),
+                is_function: sub_program.is_function(),
                 r#type: SubProgramType::Native(sub_program),
-                arg_count: sub_program.arg_count,
-                is_function: sub_program.is_function,
             },
         );
     }

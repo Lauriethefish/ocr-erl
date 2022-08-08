@@ -6,11 +6,12 @@
 use crate::bytecode::NativeCallInfo;
 use crate::err::RuntimeError;
 
+use crate::expose;
 use crate::rcstr::RcStr;
-use phf::phf_map;
 
 use std::fmt::{Debug, Display};
 use std::io::Write;
+use std::rc::Rc;
 
 #[cfg(test)]
 mod tests {
@@ -170,62 +171,16 @@ impl Display for Type {
     }
 }
 
-macro_rules! func_args {
-    ($stack:ident, $arg:ident:$type:ty $(, $next_arg:ident:$next_type:ty)*) => {
-        let $arg = ConvertArg::<$type>::try_into($stack.pop())?;
-        func_args!($stack $(,$next_arg:$next_type)*);
-    };
-    ($stack:ident) => ()
-}
+#[rustfmt::skip]
+pub fn create_stdlib() -> Vec<(String, Rc<NativeCallInfo>)> { vec![
 
-macro_rules! count_args {
-    ($arg:ident:$type:ty $(,$next_arg:ident:$next_type:ty)*) => {
-        1usize + count_args!($($next_arg:$next_type),*)
-    };
-    () => (0usize)
-}
-
-macro_rules! erl_func {
-    (($($next_arg:ident:$next_type:ty),*), $code:block) =>
-        {
-            $crate::bytecode::NativeCallInfo {
-                ptr: $crate::bytecode::NativeSubProgramPtr(|stack| {
-                    func_args!(stack, $($next_arg:$next_type),*);
-                    let result: Result<$crate::stdlib::Value, $crate::err::RuntimeError> = { $code };
-                    stack.push(result?)?;
-
-                    Ok(())
-                }),
-                is_function: true,
-                arg_count: count_args!($($next_arg:$next_type),*)
-            }
-        };
-}
-
-macro_rules! erl_proc {
-    (($($next_arg:ident:$next_type:ty),*), $code:block) =>
-        {
-            $crate::bytecode::NativeCallInfo {
-                ptr: $crate::bytecode::NativeSubProgramPtr(|stack| {
-                    func_args!(stack, $($next_arg:$next_type),*);
-                    let result: Result<(), $crate::err::RuntimeError> = { $code };
-
-                    result
-                }),
-                is_function: false,
-                arg_count: count_args!($($next_arg:$next_type),*)
-            }
-        };
-}
-
-#[allow(unused)]
-pub(crate) const BUILT_IN_SUB_PROGRAMS: phf::Map<&'static str, NativeCallInfo> = phf_map! {
-    "print" => erl_proc!((value: Value), {
+expose! {
+    fn print(value: Value) {
         println!("{}", value);
-
-        Ok(())
-    }),
-    "input" => erl_func!((prompt: Value), {
+    }
+},
+expose! {
+    fn input(prompt: Value) -> Result<Value, RuntimeError> {
         print!("{}", prompt);
         std::io::stdout().flush()?;
 
@@ -233,8 +188,10 @@ pub(crate) const BUILT_IN_SUB_PROGRAMS: phf::Map<&'static str, NativeCallInfo> =
 
         std::io::stdin().read_line(&mut text)?;
         Ok(Value::String(RcStr::new(&text)))
-    }),
-    "int" => erl_func!((value: Value), {
+    }
+},
+expose! {
+    fn int(value: Value) -> Result<Value, RuntimeError> {
         match value {
             Value::Integer(int) => Ok(Value::Integer(int)),
             Value::Real(real) => Ok(Value::Integer(real as i64)),
@@ -245,8 +202,10 @@ pub(crate) const BUILT_IN_SUB_PROGRAMS: phf::Map<&'static str, NativeCallInfo> =
             Value::True => Err(RuntimeError::FailedToConvert { value: Value::True, converting_to: Type::Integer }),
             Value::False => Err(RuntimeError::FailedToConvert { value: Value::False, converting_to: Type::Integer }),
         }
-    }),
-    "bool" => erl_func!((value: Value), {
+    }
+},
+expose! {
+    fn bool(value: Value) -> Result<Value, RuntimeError> {
         match value {
             Value::True => Ok(Value::True),
             Value::False => Ok(Value::False),
@@ -254,37 +213,36 @@ pub(crate) const BUILT_IN_SUB_PROGRAMS: phf::Map<&'static str, NativeCallInfo> =
             Value::String(string) if string.eq_ignore_ascii_case("false") => Ok(Value::False),
             _ => Err(RuntimeError::FailedToConvert { value, converting_to: Type::Boolean })
         }
-    }),
-    "str" => erl_func!((value: Value), {
-        match value {
-            Value::String(string) => Ok(Value::String(string)),
-            _ => Ok(Value::String(RcStr::new(&value.to_string())))
-        }
-    }),
-    "real" => REAL_CONVERTER,
-    "float" => REAL_CONVERTER
-};
-
-const REAL_CONVERTER: NativeCallInfo = erl_func!((value: Value), {
-    match value {
-        Value::Integer(int) => Ok(Value::Real(int as f64)),
-        Value::Real(real) => Ok(Value::Real(real)),
-        Value::String(string) => match string.parse::<f64>() {
-            Ok(real) => Ok(Value::Real(real)),
-            Err(_) => {
-                return Err(RuntimeError::FailedToConvert {
-                    value: Value::String(string),
-                    converting_to: Type::Real,
-                })
-            }
-        },
-        Value::True => Err(RuntimeError::FailedToConvert {
-            value: Value::True,
-            converting_to: Type::Integer,
-        }),
-        Value::False => Err(RuntimeError::FailedToConvert {
-            value: Value::False,
-            converting_to: Type::Integer,
-        }),
     }
-});
+},
+expose! {
+    fn str(value: Value) -> Value {
+        match value {
+            Value::String(string) => Value::String(string),
+            _ => Value::String(RcStr::new(&value.to_string()))
+        }
+    } 
+},
+expose!(
+    fn real(value: Value) -> Result<Value, RuntimeError> {
+        match value {
+            Value::Integer(int) => Ok(Value::Real(int as f64)),
+            Value::Real(real) => Ok(Value::Real(real)),
+            Value::String(string) => match string.parse::<f64>() {
+                Ok(real) => Ok(Value::Real(real)),
+                Err(_) => {
+                    return Err(RuntimeError::FailedToConvert {
+                        value: Value::String(string),
+                        converting_to: Type::Real,
+                    })
+                }
+            },
+            _ => Err(RuntimeError::FailedToConvert {
+                value: Value::True,
+                converting_to: Type::Real,
+            })
+        }
+    }
+)
+
+]}
