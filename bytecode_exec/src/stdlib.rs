@@ -8,38 +8,72 @@ use crate::err::RuntimeError;
 use crate::rcstr::RcStr;
 use crate::{expose, Type, Value};
 
-use std::cell::RefCell;
-use std::io::{BufRead, Write};
+use std::fmt::Arguments;
+use std::io::{self, Write};
 use std::rc::Rc;
+
+/// Abstraction over IO for the standard library.
+pub trait Io {
+    /// Writes the given text to the console then ends the line.
+    fn write_line_fmt(&self, args: Arguments) -> io::Result<()>;
+
+    /// Prompts the user for input, with the given text as a prompt text.
+    /// Returns the text entered by the user.
+    fn prompt_fmt(&self, args: Arguments) -> io::Result<String>;
+}
+
+#[derive(Clone)]
+struct StandardIo;
+
+impl Io for StandardIo {
+    fn write_line_fmt(&self, args: Arguments) -> io::Result<()> {
+        let mut stdout = io::stdout();
+        stdout.write_fmt(args)?;
+        stdout.write_all(b"\n")?;
+        Ok(())
+    }
+
+    fn prompt_fmt(&self, args: Arguments) -> io::Result<String> {
+        let mut stdout = io::stdout();
+        stdout.write_fmt(args)?;
+        stdout.flush()?;
+
+        let stdin = io::stdin();
+        let mut result = String::new();
+
+        stdin.read_line(&mut result)?;
+        // Remove the LF or CRLF
+        if result.pop() == Some('\r') {
+            result.pop();
+        }
+        Ok(result)
+    }
+}
 
 /// Returns the standard library functions, using stdin and stdout for input/print.
 pub fn with_default_io() -> Vec<(String, Rc<NativeCallInfo>)> {
-    with_io(std::io::stdout(), std::io::stdin().lock())
+    with_io(StandardIo {})
 }
 
 /// Returns the standard library functions, using the given streams for input/print.
 #[rustfmt::skip]
-pub fn with_io(stdout: impl Write + 'static, stdin: impl BufRead + 'static) -> Vec<(String, Rc<NativeCallInfo>)> { 
-    let stdout_print = Rc::new(RefCell::new(stdout));
-    let stdout_input = stdout_print.clone();
-    let stdin_input = Rc::new(RefCell::new(stdin));
+pub fn with_io(io: impl Io + 'static + Clone) -> Vec<(String, Rc<NativeCallInfo>)> { 
+    let print_io = io.clone();
+    let input_io = io;
+
 
 vec![
 
 expose! {
     fn print(value: Value) -> Result<(), RuntimeError> {
-        writeln!(stdout_print.borrow_mut(), "{value}")?;
+        print_io.write_line_fmt(format_args!("{value}"))?;
         Ok(())
     }
 },
 expose! {
     fn input(prompt: Value) -> Result<Value, RuntimeError> {
-        writeln!(stdout_input.borrow_mut(), "{prompt}")?;
-        stdout_input.borrow_mut().flush()?;
+        let text = input_io.prompt_fmt(format_args!("{prompt}"))?;
 
-        let mut text = String::new();
-
-        stdin_input.borrow_mut().read_line(&mut text)?;
         Ok(Value::String(RcStr::new(&text)))
     }
 },

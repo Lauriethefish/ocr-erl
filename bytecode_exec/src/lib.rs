@@ -225,10 +225,10 @@ macro_rules! expose {
             stringify!($name).to_string(),
             // SAFETY:  The `arg_count` passed is equal to the number of arguments popped by the `args!` macro when
             // calling this native sub-program.
-            // `is_function` is `false`, so no return value has to be pushed to stack.
+            // `is_function` is `true`, which is safe as we push a return value to the stack before returning `Ok`.
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
-                false,
+                true,
                 Box::new(move |stack| {
                     $crate::args!(stack $(,$next_arg:$next_type)*);
                     let result: Result<$crate::stdlib::Value, $crate::err::RuntimeError> = { $block };
@@ -248,7 +248,7 @@ macro_rules! expose {
             stringify!($name).to_string(),
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
-                false,
+                true,
                 Box::new(move |stack| {
                     $crate::args!(stack $(,$next_arg:$next_type)*);
                     let result: $crate::stdlib::Value = { $block };
@@ -262,10 +262,10 @@ macro_rules! expose {
     (fn $name:ident($($next_arg:ident:$next_type:ty),*) $block:block) => {
         (
             stringify!($name).to_string(),
+
             // SAFETY:  The `arg_count` passed is equal to the number of arguments popped by the `args!` macro when
             // calling this native sub-program.
-            // `is_function` is `true`, which is safe as a return value will always be pushed to stack if the function
-            // returns `Ok`
+            // `is_function` is `false`, so we do not need to push a return value to the stack
             unsafe { $crate::bytecode::NativeCallInfo::new(
                 $crate::count_args!($($next_arg:$next_type),*),
                 false,
