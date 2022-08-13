@@ -8,7 +8,7 @@ specifically section 3c on page 32. However, the specification can hardly be des
 assumptions about parts of the language.
 
 ## Usage
-Download the latest build from [actions](https://github.com/Lauriethefish/ocr-erl/actions), and extract the ZIP file.
+Download the latest nightly build [here](https://nightly.link/Lauriethefish/ocr-erl/workflows/build/master) and extract the ZIP file.
 You can run code by passing the path to a file as a command line argument:
 ```sh
 ./erl code.erl
