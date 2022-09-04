@@ -50,6 +50,13 @@ pub enum RuntimeError {
         /// TODO: For performance reasons, right now there is no `actual` field here.
         expected: Type,
     },
+    /// Thrown if a string with a length other than 1 was passed to a sub-program expecting a character,
+    /// or alternatively if an unrelated type was passed
+    ExpectedChar { actual: Value },
+    /// Thrown if a non-ASCII character is passed to `ASC`
+    InvalidAsciiCharacter { char: char },
+    /// Thrown if a non-ASCII character code is passed to `CHR`
+    InvalidAsciiCode { code: i64 },
     /// Thrown if an incorrect type was given to a function or operaiton, and multiple types were acceptable to give.
     ExpectedOneOf { expected: &'static [Type] },
     /// Thrown if failing to convert between two types
@@ -96,6 +103,9 @@ impl Display for RuntimeError {
                 }
                 f.write_fmt(format_args!("or {}", expected[expected.len() - 1]))
             },
+            RuntimeError::ExpectedChar { actual } => f.write_fmt(format_args!("expected a string with length 1, but was passed \"{actual}\"")),
+            RuntimeError::InvalidAsciiCharacter { char } => f.write_fmt(format_args!("cannot find the ASCII code of character `{char}`, as it is not an ASCII character")),
+            RuntimeError::InvalidAsciiCode { code } => f.write_fmt(format_args!("cannot convert {code} to an ASCII character: ASCII codepoints range from 0 to 127")),
         }
     }
 }

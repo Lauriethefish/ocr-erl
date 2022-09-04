@@ -43,12 +43,12 @@ Therefore, learning ERL can be useful. Using this interpreter, anybody can write
 - [x] String length.
 - [x] Substrings
 - [x] Concatenation
-- [ ] ASCII conversion
+- [x] ASCII conversion
 - [ ] File IO
 - [ ] Arrays
 - [x] Procedures
 - [x] Functions
-- [ ] Random numbers
+- [x] Random numbers
 
 
 ## Project Structure

@@ -155,6 +155,34 @@ expose!(
         }
     }
 ),
+expose!(
+    fn ASC(c: Value) -> Result<Value, RuntimeError> {
+        let c = match c {
+            Value::String(s) => if s.chars().count() > 1 {
+                return Err(RuntimeError::ExpectedChar { actual: Value::String(s) })
+            }   else    {
+                s.chars().next().unwrap()
+            },
+            _ => return Err(RuntimeError::ExpectedChar { actual: c })
+        };
+        let unicode_value = c as u32;
+        if unicode_value < 128 {
+            Ok(Value::Integer(unicode_value as i64))
+        }   else    {
+            Err(RuntimeError::InvalidAsciiCharacter { char: c })
+        }
+    }
+),
+expose!(
+    fn CHR(code: i64) -> Result<Value, RuntimeError> {
+        if code < 0 || code > 127 {
+            Err(RuntimeError::InvalidAsciiCode { code })
+        }   else    {
+            // SAFETY: The character is within range 0 and 127 inclusive, so must be a valid ASCII character, and thus a valid UTF-8 character
+            Ok(Value::String(RcStr::new(unsafe { std::str::from_utf8_unchecked(&[code as u8]) })))
+        }
+    }
+),
 expose_member!(
     fn substring(s: RcStr, start: i64, len: i64) -> Value {
         let (start, len) = (start as usize, len as usize);
