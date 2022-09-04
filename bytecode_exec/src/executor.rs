@@ -553,6 +553,14 @@ fn execute_idx(
                 Value::String(str) => unsafe { stack.push_unchecked(Value::Integer(str.len() as i64)) },
                 _ => return Err(RuntimeError::NoSuchProperty("length".to_string()))
             },
+            Instruction::Upper => match unsafe { stack.pop_unchecked()} {
+                Value::String(str) => unsafe { stack.push_unchecked(Value::String(RcStr::new(&str.to_uppercase())))},
+                _ => return Err(RuntimeError::NoSuchProperty("upper".to_string()))
+            },
+            Instruction::Lower => match unsafe { stack.pop_unchecked()} {
+                Value::String(str) => unsafe { stack.push_unchecked(Value::String(RcStr::new(&str.to_lowercase())))},
+                _ => return Err(RuntimeError::NoSuchProperty("lower".to_string()))
+            },
         };
 
         // Advance to the next instruction

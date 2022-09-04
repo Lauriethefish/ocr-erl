@@ -781,6 +781,12 @@ impl<'a> Context<'a> {
                     if name == "length" {
                         self.emit_expression(*value)?;
                         self.emit(Instruction::Length);
+                    }   else if name == "upper"  {
+                        self.emit_expression(*value)?;
+                        self.emit(Instruction::Upper);
+                    }   else if name == "lower" {
+                        self.emit_expression(*value)?;
+                        self.emit(Instruction::Lower);
                     }   else    {
                         return Err(RuntimeError::NoSuchProperty(name))
                     }
