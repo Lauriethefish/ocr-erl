@@ -777,7 +777,14 @@ impl<'a> Context<'a> {
                     to_index: _,
                     indices: _,
                 } => todo!(), // TODO: Need a function for indexing arrays
-                Assignable::Property { value: _, name: _ } => todo!(), // TODO: Need a function for getting properties
+                Assignable::Property { value, name } => {
+                    if name == "length" {
+                        self.emit_expression(*value)?;
+                        self.emit(Instruction::Length);
+                    }   else    {
+                        return Err(RuntimeError::NoSuchProperty(name))
+                    }
+                }
                 Assignable::Variable(name) => {
                     self.load(name)?;
                 }

@@ -30,6 +30,8 @@ pub enum RuntimeError {
     MustReturnValueFromFunction,
     /// Thrown if calling a sub-program that does not exist.
     NoSuchSubProgram(String),
+    /// Thrown if attempting to access a property that does not exist
+    NoSuchProperty(String),
     /// Thrown if calling a sub-program with the wrong number of arguments.
     WrongNumberOfArguments {
         /// The name of the sub-program passed the wrong number of arguments
@@ -84,6 +86,7 @@ impl Display for RuntimeError {
             RuntimeError::CannotReturnValueFromProcedure => f.write_str("cannot return a value from a procedure"),
             RuntimeError::MustReturnValueFromFunction => f.write_str("cannot exit a function without returning a value"),
             RuntimeError::StackOverflow => f.write_str("stack overflow"),
+            RuntimeError::NoSuchProperty(name) => f.write_fmt(format_args!("no such property `{name}`")),
         }
     }
 }

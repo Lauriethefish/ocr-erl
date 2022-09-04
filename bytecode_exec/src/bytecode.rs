@@ -240,6 +240,12 @@ impl Module {
                     continue;
                 }
                 Instruction::Nop => {}
+                Instruction::Length => {
+                    // There must be one item on the stack to pop
+                    Self::diff(&mut size, -1);
+                    // Length is then pushed to the stack
+                    Self::diff(&mut size, 1);
+                },
             };
 
             if size > max_size {
@@ -520,6 +526,9 @@ pub(crate) enum Instruction {
 
     /// Does nothing
     Nop,
+
+    /// Replaces the value on the top of the stack with the length of the string or array on the top of the stack
+    Length
 }
 
 impl Debug for Instruction {
@@ -569,6 +578,7 @@ impl Debug for Instruction {
             Instruction::Pop => f.write_str("POP"),
             Instruction::Throw(err) => f.write_fmt(format_args!("THW, {err}")),
             Instruction::Nop => f.write_str("NOP"),
+            Instruction::Length => f.write_str("LEN"),
         }
     }
 }

@@ -549,6 +549,10 @@ fn execute_idx(
             Instruction::Throw(err) => return Err((**err).clone()),
             Instruction::Nop => {}
             Instruction::CallNative(call_info) => unsafe { call_info.call(&mut stack)? },
+            Instruction::Length => match unsafe { stack.pop_unchecked() } {
+                Value::String(str) => unsafe { stack.push_unchecked(Value::Integer(str.len() as i64)) },
+                _ => return Err(RuntimeError::NoSuchProperty("length".to_string()))
+            },
         };
 
         // Advance to the next instruction
