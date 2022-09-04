@@ -40,8 +40,8 @@ Therefore, learning ERL can be useful. Using this interpreter, anybody can write
 - [ ] `do until` loops
 - [x] `if then elseif` statements.
 - [ ] `switch` statements.
-- [ ] String length.
-- [ ] Substrings
+- [x] String length.
+- [x] Substrings
 - [x] Concatenation
 - [ ] ASCII conversion
 - [ ] File IO
