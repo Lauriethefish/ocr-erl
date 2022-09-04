@@ -89,8 +89,7 @@ expose! {
                 Ok(int) => Ok(Value::Integer(int)),
                 Err(_) => return Err(RuntimeError::FailedToConvert { value: Value::String(string), converting_to: Type::Integer }),
             },
-            Value::True => Err(RuntimeError::FailedToConvert { value: Value::True, converting_to: Type::Integer }),
-            Value::False => Err(RuntimeError::FailedToConvert { value: Value::False, converting_to: Type::Integer }),
+            _ => Err(RuntimeError::FailedToConvert { value, converting_to: Type::Integer })
         }
     }
 },
