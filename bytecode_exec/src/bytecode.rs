@@ -240,14 +240,12 @@ impl Module {
                     continue;
                 }
                 Instruction::Nop => {}
-                Instruction::Length
-                | Instruction::Upper
-                | Instruction::Lower => {
+                Instruction::Length | Instruction::Upper | Instruction::Lower => {
                     // There must be one item on the stack to pop
                     Self::diff(&mut size, -1);
                     // Length is then pushed to the stack
                     Self::diff(&mut size, 1);
-                },
+                }
             };
 
             if size > max_size {
@@ -374,7 +372,7 @@ impl NativeCallInfo {
             arg_count,
             is_function,
             ptr,
-            is_member: false
+            is_member: false,
         }
     }
 
@@ -535,7 +533,7 @@ pub(crate) enum Instruction {
     /// Replaces the string value on the top of the stack with its upper-case representation
     Upper,
     /// Replaces the string value on the top of the stack with its lower-case representation
-    Lower
+    Lower,
 }
 
 impl Debug for Instruction {

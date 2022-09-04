@@ -426,7 +426,7 @@ fn execute_idx(
                 Value::True => unsafe { stack.push_unchecked(Value::False) },
                 Value::False => unsafe { stack.push_unchecked(Value::True) },
                 _ => {
-                    return Err(RuntimeError::WrongType {
+                    return Err(RuntimeError::ExpectedType {
                         expected: Type::Boolean,
                     })
                 }
@@ -438,7 +438,7 @@ fn execute_idx(
                 }
                 Value::False => {}
                 _ => {
-                    return Err(RuntimeError::WrongType {
+                    return Err(RuntimeError::ExpectedType {
                         expected: Type::Boolean,
                     })
                 }
@@ -450,7 +450,7 @@ fn execute_idx(
                     continue;
                 }
                 _ => {
-                    return Err(RuntimeError::WrongType {
+                    return Err(RuntimeError::ExpectedType {
                         expected: Type::Boolean,
                     })
                 }
@@ -464,7 +464,7 @@ fn execute_idx(
                     continue;
                 }
                 _ => {
-                    return Err(RuntimeError::WrongType {
+                    return Err(RuntimeError::ExpectedType {
                         expected: Type::Boolean,
                     })
                 }
@@ -478,7 +478,7 @@ fn execute_idx(
                     stack.pop_unchecked();
                 },
                 _ => {
-                    return Err(RuntimeError::WrongType {
+                    return Err(RuntimeError::ExpectedType {
                         expected: Type::Boolean,
                     })
                 }
@@ -550,16 +550,22 @@ fn execute_idx(
             Instruction::Nop => {}
             Instruction::CallNative(call_info) => unsafe { call_info.call(&mut stack)? },
             Instruction::Length => match unsafe { stack.pop_unchecked() } {
-                Value::String(str) => unsafe { stack.push_unchecked(Value::Integer(str.len() as i64)) },
-                _ => return Err(RuntimeError::NoSuchProperty("length".to_string()))
+                Value::String(str) => unsafe {
+                    stack.push_unchecked(Value::Integer(str.len() as i64))
+                },
+                _ => return Err(RuntimeError::NoSuchProperty("length".to_string())),
             },
-            Instruction::Upper => match unsafe { stack.pop_unchecked()} {
-                Value::String(str) => unsafe { stack.push_unchecked(Value::String(RcStr::new(&str.to_uppercase())))},
-                _ => return Err(RuntimeError::NoSuchProperty("upper".to_string()))
+            Instruction::Upper => match unsafe { stack.pop_unchecked() } {
+                Value::String(str) => unsafe {
+                    stack.push_unchecked(Value::String(RcStr::new(&str.to_uppercase())))
+                },
+                _ => return Err(RuntimeError::NoSuchProperty("upper".to_string())),
             },
-            Instruction::Lower => match unsafe { stack.pop_unchecked()} {
-                Value::String(str) => unsafe { stack.push_unchecked(Value::String(RcStr::new(&str.to_lowercase())))},
-                _ => return Err(RuntimeError::NoSuchProperty("lower".to_string()))
+            Instruction::Lower => match unsafe { stack.pop_unchecked() } {
+                Value::String(str) => unsafe {
+                    stack.push_unchecked(Value::String(RcStr::new(&str.to_lowercase())))
+                },
+                _ => return Err(RuntimeError::NoSuchProperty("lower".to_string())),
             },
         };
 

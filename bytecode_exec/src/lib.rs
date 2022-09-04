@@ -106,7 +106,7 @@ impl TryInto<i64> for Value {
     fn try_into(self) -> Result<i64, Self::Error> {
         match self {
             Value::Integer(int) => Ok(int),
-            _ => Err(RuntimeError::WrongType {
+            _ => Err(RuntimeError::ExpectedType {
                 expected: Type::Integer,
             }),
         }
@@ -120,7 +120,7 @@ impl TryInto<f64> for Value {
     fn try_into(self) -> Result<f64, Self::Error> {
         match self {
             Value::Real(real) => Ok(real),
-            _ => Err(RuntimeError::WrongType {
+            _ => Err(RuntimeError::ExpectedType {
                 expected: Type::Real,
             }),
         }
@@ -135,7 +135,7 @@ impl TryInto<bool> for Value {
         match self {
             Value::True => Ok(true),
             Value::False => Ok(false),
-            _ => Err(RuntimeError::WrongType {
+            _ => Err(RuntimeError::ExpectedType {
                 expected: Type::Boolean,
             }),
         }
@@ -148,7 +148,7 @@ impl TryInto<RcStr> for Value {
     fn try_into(self) -> Result<RcStr, Self::Error> {
         match self {
             Value::String(string) => Ok(string),
-            _ => Err(RuntimeError::WrongType {
+            _ => Err(RuntimeError::ExpectedType {
                 expected: Type::String,
             }),
         }
@@ -202,7 +202,7 @@ macro_rules! count_args {
 /// Macro for wrapping native member sub-programs to be called by the interpreter.
 /// Member sub-programs are treated as regular sub-programs with an object as their first argument.
 /// Since, in ERL, there are no member sub-programs for different types that share the same name, this is made very easy.
-/// 
+///
 /// If there were such sub-programs, dynamic dispatch would be needed, but this doesn't have to be implemented for this interpreter due
 /// to the few methods available in ERL.
 #[macro_export]

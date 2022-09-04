@@ -686,14 +686,11 @@ impl<'a> Context<'a> {
 
     fn emit_call(&mut self, mut call: Call, using_return_value: bool) -> Result<()> {
         let name = match *call.callee {
-            Callee::Member {
-                object,
-                member,
-            } => {
+            Callee::Member { object, member } => {
                 // Insert the object to be called as the first argument to member sub-programs
                 call.args.insert(0, object);
                 member
-            },
+            }
             Callee::SubProgram(name) => name,
         };
 
@@ -737,7 +734,7 @@ impl<'a> Context<'a> {
             for arg in call.args.into_iter().rev() {
                 self.emit_expression(arg)?;
             }
-        }   else    {
+        } else {
             for arg in call.args {
                 self.emit_expression(arg)?;
             }
@@ -781,14 +778,14 @@ impl<'a> Context<'a> {
                     if name == "length" {
                         self.emit_expression(*value)?;
                         self.emit(Instruction::Length);
-                    }   else if name == "upper"  {
+                    } else if name == "upper" {
                         self.emit_expression(*value)?;
                         self.emit(Instruction::Upper);
-                    }   else if name == "lower" {
+                    } else if name == "lower" {
                         self.emit_expression(*value)?;
                         self.emit(Instruction::Lower);
-                    }   else    {
-                        return Err(RuntimeError::NoSuchProperty(name))
+                    } else {
+                        return Err(RuntimeError::NoSuchProperty(name));
                     }
                 }
                 Assignable::Variable(name) => {

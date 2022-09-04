@@ -43,13 +43,15 @@ pub enum RuntimeError {
     },
     /// Thrown if declaring a sub-program with a name that already exists.
     DuplicateSubProgramName(String),
-    /// Thrown if an incorrect type is given to a function or operation.
-    WrongType {
+    /// Thrown if an incorrect type is given to a function or operation, and there was only one valid type to give.
+    ExpectedType {
         /// The type that was expected.
         ///
         /// TODO: For performance reasons, right now there is no `actual` field here.
         expected: Type,
     },
+    /// Thrown if an incorrect type was given to a function or operaiton, and multiple types were acceptable to give.
+    ExpectedOneOf { expected: &'static [Type] },
     /// Thrown if failing to convert between two types
     FailedToConvert {
         /// The value being converted
@@ -78,7 +80,7 @@ impl Display for RuntimeError {
             RuntimeError::NoSuchSubProgram(name) => f.write_fmt(format_args!("cannot call sub-program `{name}` as it does not exist")),
             RuntimeError::WrongNumberOfArguments { name, expected, actual } => f.write_fmt(format_args!("wrong number of arguments for sub-program `{name}`. expected: {expected}, actual: {actual}")),
             RuntimeError::DuplicateSubProgramName(name) => f.write_fmt(format_args!("cannot name a sub-program `{name}`, as a sub-program with that name already exists")),
-            RuntimeError::WrongType { expected } => f.write_fmt(format_args!("wrong type. expected: `{expected}`")),
+            RuntimeError::ExpectedType { expected } => f.write_fmt(format_args!("wrong type. expected: `{expected}`")),
             RuntimeError::CannotBinaryOperate(operation) => f.write_fmt(format_args!("cannot perform operation `{operation:?}` on the given types")),
             RuntimeError::CannotUnaryOperate(operation) => f.write_fmt(format_args!("cannot perform operation `{operation:?}` on the given type")),
             RuntimeError::FailedToConvert { value, converting_to } => f.write_fmt(format_args!("could not convert value `{value}` to type `{converting_to}`")),
@@ -87,6 +89,13 @@ impl Display for RuntimeError {
             RuntimeError::MustReturnValueFromFunction => f.write_str("cannot exit a function without returning a value"),
             RuntimeError::StackOverflow => f.write_str("stack overflow"),
             RuntimeError::NoSuchProperty(name) => f.write_fmt(format_args!("no such property `{name}`")),
+            RuntimeError::ExpectedOneOf { expected } => {
+                f.write_str("wrong type. expected one of: ")?;
+                for t in &expected[..expected.len() - 1] {
+                    f.write_fmt(format_args!("{}, ", t))?;
+                }
+                f.write_fmt(format_args!("or {}", expected[expected.len() - 1]))
+            },
         }
     }
 }

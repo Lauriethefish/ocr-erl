@@ -1114,7 +1114,9 @@ impl Drop for Stack {
         for value in self.contents[0..self.size].iter_mut() {
             // SAFETY: `value` must be within the stack since its index is below `self.size`.
             // Thus, it must be initialised and safe to drop.
-            unsafe { value.assume_init_drop(); }
+            unsafe {
+                value.assume_init_drop();
+            }
         }
     }
 }

@@ -2,11 +2,13 @@
 //!
 //! This module defines the default functions available to an ERL program.
 
+use rand::Rng;
+
 use crate::bytecode::NativeCallInfo;
 use crate::err::RuntimeError;
 
 use crate::rcstr::RcStr;
-use crate::{expose, Type, Value, expose_member};
+use crate::{expose, expose_member, Type, Value};
 
 use std::fmt::Arguments;
 use std::io::{self, Write};
@@ -131,6 +133,28 @@ expose!(
             })
         }
     }   
+),
+expose!(
+    fn random(from: Value, to: Value) -> Result<Value, RuntimeError> {
+        const TYPE_ERROR: Result<Value, RuntimeError> = Err(RuntimeError::ExpectedOneOf { 
+            expected: &[Type::Integer, Type::Real]
+        });
+
+        let mut rng = rand::thread_rng();
+        match from {
+            Value::Integer(from) => match to {
+                Value::Integer(to) => Ok(Value::Integer(rng.gen_range(from..=to))),
+                Value::Real(to) => Ok(Value::Real(rng.gen_range((from as f64)..=to))),
+                _ => TYPE_ERROR
+            },
+            Value::Real(from) => match to {
+                Value::Integer(to) => Ok(Value::Real(rng.gen_range(from..=(to as f64)))),
+                Value::Real(to) => Ok(Value::Real(rng.gen_range(from..=to))),
+                _ => TYPE_ERROR
+            },
+            _ => TYPE_ERROR
+        }
+    }
 ),
 expose_member!(
     fn substring(s: RcStr, start: i64, len: i64) -> Value {
