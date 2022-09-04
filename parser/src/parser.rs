@@ -1959,6 +1959,19 @@ fn parse_expression_list(lexer: &mut impl Lexer, ending_token: Token) -> Result<
     }
 }
 
+fn negate_expression(expr: Expression) -> Expression {
+    // Don't add a binary expression to subtract the operand from 0 if we are just negating a literal
+    match expr {
+        Expression::IntegerLiteral(i) => Expression::IntegerLiteral(-i),
+        Expression::RealLiteral(r) => Expression::RealLiteral(-r),
+        _ => Expression::Binary {
+            operator: BinaryOperator::Subtract,
+            left: Box::new(Expression::IntegerLiteral(0)),
+            right: Box::new(expr) 
+        }
+    }
+}
+
 fn parse_unary_expression(lexer: &mut impl Lexer) -> Result<Expression> {
     let beginning_of_expr = lexer.at_next_token();
 
@@ -1992,6 +2005,14 @@ fn parse_unary_expression(lexer: &mut impl Lexer) -> Result<Expression> {
         Token::OpenSquareBrace => {
             lexer.consume_token()?;
             Expression::ArrayLiteral(parse_expression_list(lexer, Token::CloseSquareBrace)?)
+        },
+        Token::Subtract => {
+            lexer.consume_token()?;
+            negate_expression(parse_unary_expression(lexer)?)
+        },
+        Token::Add => {
+            lexer.consume_token()?;
+            parse_unary_expression(lexer)?
         }
         _ => {
             return match parse_unary_operator(lexer) {
@@ -2007,6 +2028,7 @@ fn parse_unary_expression(lexer: &mut impl Lexer) -> Result<Expression> {
             }
         }
     };
+
 
     loop {
         match lexer.peek_token()? {
