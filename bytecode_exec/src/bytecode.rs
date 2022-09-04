@@ -344,6 +344,8 @@ pub struct NativeCallInfo {
     arg_count: usize,
     /// Whether the sub-program is a function (returns a value).
     is_function: bool,
+    /// Whether the sub-program is a member sub-program
+    pub is_member: bool,
     /// The pointer to call the sub-program. (the sub-program itself manages properly popping arguments from the stack and pushing the result).
     ptr: NativeSubProgram,
 }
@@ -358,13 +360,14 @@ impl NativeCallInfo {
     ///
     /// If the sub-program does not do this, using this [NativeCallInfo] may lead to undefined behaviour.
     ///
-    /// NOTE: This function is not intended to be used directl. Consider using the `expose!` macro.
-    pub unsafe fn new(arg_count: usize, is_function: bool, ptr: NativeSubProgram) -> Rc<Self> {
-        Rc::new(NativeCallInfo {
+    /// NOTE: This function is not intended to be used directly. Consider using the `expose!` macro.
+    pub unsafe fn new(arg_count: usize, is_function: bool, ptr: NativeSubProgram) -> Self {
+        NativeCallInfo {
             arg_count,
             is_function,
             ptr,
-        })
+            is_member: false
+        }
     }
 
     /// Calls the native sub-program.

@@ -684,12 +684,16 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn emit_call(&mut self, call: Call, using_return_value: bool) -> Result<()> {
+    fn emit_call(&mut self, mut call: Call, using_return_value: bool) -> Result<()> {
         let name = match *call.callee {
             Callee::Member {
-                object: _,
-                member: _,
-            } => todo!(),
+                object,
+                member,
+            } => {
+                // Insert the object to be called as the first argument to member sub-programs
+                call.args.insert(0, object);
+                member
+            },
             Callee::SubProgram(name) => name,
         };
 
@@ -728,8 +732,15 @@ impl<'a> Context<'a> {
         }
 
         // Push the arguments to the stack, one at a time
-        for arg in call.args {
-            self.emit_expression(arg)?;
+        // Native functions have their arguments flipped so that they get popped off of the stack in the right order.
+        if let SubProgramCallInfo::Native(_) = call_info {
+            for arg in call.args.into_iter().rev() {
+                self.emit_expression(arg)?;
+            }
+        }   else    {
+            for arg in call.args {
+                self.emit_expression(arg)?;
+            }
         }
 
         self.emit(call_instruction);

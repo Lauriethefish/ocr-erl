@@ -199,9 +199,42 @@ macro_rules! count_args {
     () => (0usize)
 }
 
+/// Macro for wrapping native member sub-programs to be called by the interpreter.
+/// Member sub-programs are treated as regular sub-programs with an object as their first argument.
+/// Since, in ERL, there are no member sub-programs for different types that share the same name, this is made very easy.
+/// 
+/// If there were such sub-programs, dynamic dispatch would be needed, but this doesn't have to be implemented for this interpreter due
+/// to the few methods available in ERL.
+#[macro_export]
+macro_rules! expose_member {
+    ($($args:tt)*) => {
+        {
+            let (name, mut call_info) = $crate::expose_internal! { $($args)* };
+            call_info.is_member = true;
+            (
+                name,
+                Rc::new(call_info)
+            )
+        }
+    };
+}
+
 /// Macro for wrapping native sub-programs to be called by the interpreter.
 #[macro_export]
 macro_rules! expose {
+    ($($args:tt)*) => {
+        {
+            let (name, call_info) = $crate::expose_internal!($($args)*);
+            (
+                name,
+                Rc::new(call_info)
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! expose_internal {
     (fn $name:ident($($next_arg:ident:$next_type:ty),*) -> Result<(), RuntimeError> $block:block) => {
         (
             stringify!($name).to_string(),

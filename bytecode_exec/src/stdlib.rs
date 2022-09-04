@@ -6,7 +6,7 @@ use crate::bytecode::NativeCallInfo;
 use crate::err::RuntimeError;
 
 use crate::rcstr::RcStr;
-use crate::{expose, Type, Value};
+use crate::{expose, Type, Value, expose_member};
 
 use std::fmt::Arguments;
 use std::io::{self, Write};
@@ -130,6 +130,25 @@ expose!(
                 converting_to: Type::Real,
             })
         }
+    }   
+),
+expose_member!(
+    fn substring(s: RcStr, start: i64, len: i64) -> Value {
+        let (start, len) = (start as usize, len as usize);
+
+        Value::String(RcStr::new(&s[start..(start + len)]))
+    }
+),
+expose_member!(
+    fn left(s: RcStr, len: i64) -> Value {
+        let len = len as usize;
+        Value::String(RcStr::new(&s[..len]))
+    }
+),
+expose_member!(
+    fn right(s: RcStr, len: i64) -> Value {
+        let len = len as usize;
+        Value::String(RcStr::new(&s[s.len()-len..]))
     }
 )
 
